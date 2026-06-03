@@ -85,6 +85,14 @@ winning `zoneId` or `null`. Built-ins: `rectIntersection` (default),
 `pointerWithin`, `closestCenter`.
 _Avoid_: Hit testing, intersection (bare), collision (bare).
 
+**Modifier**:
+A composable function that adjusts the Overlay's proposed `{ x, y }`
+transform during a drag. Modifiers run left-to-right (each feeds the
+next) and their result drives both what the user sees and what collision
+detection tests against. Built-ins: `restrictToWindowEdges` (default),
+`restrictToVerticalAxis`, `restrictToHorizontalAxis`, `snapToGrid(size)`.
+_Avoid_: Constraint (that is the Activation constraint), transformer.
+
 ### Optional modules
 
 **Snap-back**:
