@@ -32,8 +32,10 @@ _Avoid_: Droppable, target, area, slot.
 
 **Overlay**:
 The floating layer rendered at the pointer during a drag;
-`<DropAction.Active>` renders into it. Because the source Item never
-moves, the Overlay is the only thing the user sees travel.
+`<DropAction.Active>` renders into it. It is portalled to `document.body`
+(overridable) and moved with a fixed-position transform. Because the
+source Item never moves, the Overlay is the only thing the user sees
+travel.
 _Avoid_: Ghost, clone, preview, drag image.
 
 **Active**:
@@ -104,6 +106,12 @@ Not part of the headless core — it ships as the opt-in subpath module
 `drop-action/snap-back`, built on the `status` and origin rect the core
 exposes.
 _Avoid_: Bounce-back, revert, return-to-origin.
+
+**Sortable**:
+Reorderable-list behaviour — the auto-opening gap/placeholder showing
+where a dragged Item will land within an ordered list. Anticipated as an
+opt-in subpath module (like Snap-back), not part of the headless core.
+_Avoid_: Reorder (bare), DnD list, sortable list.
 
 ### Input
 
