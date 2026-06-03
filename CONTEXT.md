@@ -33,10 +33,10 @@ moves, the Overlay is the only thing the user sees travel.
 _Avoid_: Ghost, clone, preview, drag image.
 
 **Active**:
-The Item currently being dragged — the one travelling. Its `data` is
-read with `useActive()`, and it is rendered in flight by
-`<DropAction.Active>` (which mounts into the Overlay). The naming holds
-the relationship: the Active Item carries this data.
+The Item currently being dragged — the one travelling. Its `{ id, data }`
+and resolution `status` are read with `useActive()`, and it is rendered
+in flight by `<DropAction.Active>` (which mounts into the Overlay). The
+naming holds the relationship: the Active Item carries this data.
 _Avoid_: Dragging, current, selected, grabbed.
 
 **Drag handle**:
@@ -57,6 +57,23 @@ Accept is explicit and opt-in — the Zone must call `respond('accepted')`;
 anything else, including never responding, is a Reject. Resolution may be
 asynchronous: the Zone can await I/O before responding.
 _Avoid_: Approve/deny, allow/block, success/failure.
+
+**Dropping**:
+The pending phase between an Item's release and the Drop resolving
+(Accept / Reject). The Active Item's `status` is `'dropping'` here, the
+Overlay persists, and its origin rect stays available so consumers can
+animate the outcome. Outside this phase a held Item's status is
+`'dragging'`.
+_Avoid_: Pending (bare), loading, settling, resolving.
+
+### Optional modules
+
+**Snap-back**:
+The reject animation that returns the Overlay to the Item's origin rect.
+Not part of the headless core — it ships as the opt-in subpath module
+`drop-action/snap-back`, built on the `status` and origin rect the core
+exposes.
+_Avoid_: Bounce-back, revert, return-to-origin.
 
 ### Input
 
