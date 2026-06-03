@@ -9,9 +9,11 @@ general programming concepts (and React primitives) are excluded.
 ### Participants
 
 **Drop Action**:
-The named drag-and-drop interaction returned by `createDropAction(id)`.
-One Drop Action is a self-contained channel: only its own Items and
-Zones see each other. It is the unit the whole library is built around.
+The named drag-and-drop interaction returned by `createDropAction(id)`,
+which yields a namespace of components (`Zone`, `Item`, `Active`) and
+hooks — not a component itself. One Drop Action is a self-contained
+channel: only its own Items and Zones see each other, so collision
+detection never leaks across Drop Actions.
 _Avoid_: Context, DnD context, board, instance.
 
 **Item**:
@@ -22,8 +24,10 @@ its `data`.
 _Avoid_: Draggable, source, card.
 
 **Zone**:
-A droppable target region within a Drop Action, identified by a
-`zoneId`. A single Drop Action may render many Zones.
+A droppable target region within a Drop Action, rendered as
+`<DropAction.Zone id>` (its `id` is the `zoneId`). A single Drop Action
+may render many Zones at once. Zone ids and Item ids live in separate
+spaces, so a Zone and an Item may safely share an id.
 _Avoid_: Droppable, target, area, slot.
 
 **Overlay**:
