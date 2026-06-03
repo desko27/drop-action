@@ -26,10 +26,17 @@ A droppable target region within a Drop Action, identified by a
 _Avoid_: Droppable, target, area, slot.
 
 **Overlay**:
-The floating element rendered at the pointer during an active drag.
-Because the source Item never moves, the Overlay is the only thing the
-user sees travel.
+The floating layer rendered at the pointer during a drag;
+`<DropAction.Active>` renders into it. Because the source Item never
+moves, the Overlay is the only thing the user sees travel.
 _Avoid_: Ghost, clone, preview, drag image.
+
+**Active**:
+The Item currently being dragged — the one travelling. Its `data` is
+read with `useActive()`, and it is rendered in flight by
+`<DropAction.Active>` (which mounts into the Overlay). The naming holds
+the relationship: the Active Item carries this data.
+_Avoid_: Dragging, current, selected, grabbed.
 
 **Drag handle**:
 The sub-element of an Item that initiates the drag. By default the whole
@@ -44,10 +51,6 @@ _Avoid_: Threshold (bare), tolerance, sensor delay.
 
 ## Flagged ambiguities
 
-- **"Active"** is overloaded in the current work code: it names the
-  Overlay-rendering component (`<DropAction.Active>`), the
-  currently-dragged data hook (`useActive`), and dnd-kit's own `Active`
-  type. Pending resolution — see the naming grilling.
 - **"Drop"** vs **"Drop Action"**: "Drop" is the event/moment an Item is
   released over a Zone; "Drop Action" is the whole interaction channel.
   Keep them distinct.
