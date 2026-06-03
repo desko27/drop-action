@@ -70,6 +70,21 @@ animate the outcome. Outside this phase a held Item's status is
 `'dragging'`.
 _Avoid_: Pending (bare), loading, settling, resolving.
 
+### Collision
+
+**Over**:
+The single Zone the Active Item is currently judged to be over. At most
+one Zone is Over at a time per Drop Action. Read with `useOver(zoneId)`,
+which reports the Active `{ id, data }` while that Zone is the Over one.
+_Avoid_: Hover, target, current zone.
+
+**Collision detection**:
+The pluggable strategy that picks which Zone (if any) is Over, given the
+pointer, the Overlay rect, and the Drop Action's Zone rects. Returns one
+winning `zoneId` or `null`. Built-ins: `rectIntersection` (default),
+`pointerWithin`, `closestCenter`.
+_Avoid_: Hit testing, intersection (bare), collision (bare).
+
 ### Optional modules
 
 **Snap-back**:
