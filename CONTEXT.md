@@ -44,8 +44,11 @@ naming holds the relationship: the Active Item carries this data.
 _Avoid_: Dragging, current, selected, grabbed.
 
 **Drag handle**:
-The sub-element of an Item that initiates the drag. By default the whole
-Item is its own handle; a custom Drag handle narrows the grabbable area.
+The element that initiates a drag. By default the whole Item is its own
+handle (via `useItem`'s `dragHandleProps`); with `customDragHandle` the
+grabbable area narrows to wherever `useDragHandle(id)` is spread, which
+may live outside the Item's subtree (a toolbar, a header). The handle
+only triggers the drag; the Item is always what is measured and travels.
 _Avoid_: Grip, knob, gripper.
 
 ### Drop resolution
