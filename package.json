@@ -1,0 +1,36 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r run build",
+    "lint": "biome check .",
+    "check:types": "tsc -b",
+    "test": "vitest run --project unit",
+    "test:coverage": "vitest run --project unit --coverage",
+    "test:dev": "vitest --project unit",
+    "test:dist": "vitest run --project dist",
+    "dist-lint": "publint packages/drop-action --strict && attw --pack packages/drop-action",
+    "dev": "pnpm --filter demo run dev",
+    "size": "pnpm --filter drop-action run size",
+    "add-changeset": "changeset",
+    "bump-version": "changeset version",
+    "release": "changeset publish",
+    "phoenix": "rm -rf node_modules **/node_modules && pnpm install",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.3",
+    "@biomejs/biome": "^2.4.16",
+    "@changesets/cli": "^2.31.0",
+    "@vitest/coverage-v8": "^4.1.8",
+    "happy-dom": "^20.9.0",
+    "lefthook": "^2.1.9",
+    "publint": "^0.3.21",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  }
+}
