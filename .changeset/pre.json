@@ -4,7 +4,5 @@
   "initialVersions": {
     "drop-action": "0.1.0"
   },
-  "changesets": [
-    "return-resolution"
-  ]
+  "changesets": ["return-resolution"]
 }
