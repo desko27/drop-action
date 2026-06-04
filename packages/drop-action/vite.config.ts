@@ -7,11 +7,15 @@ import dts from 'vite-plugin-dts'
 // vite-plugin-dts emits one rolled-up .d.ts per entry. Consumers using
 // `require('drop-action')` resolve through the `require` condition of
 // exports, which (per publint --strict) must point at a .d.cts file, not
-// the ESM .d.ts. The main entry has only named exports, so the .d.ts is
+// the ESM .d.ts. These entries have only named exports, so each .d.ts is
 // copy-safe as-is; the extra rewrite react-call needs for default-export
-// entries is unnecessary until drop-action grows a subpath module with a
-// default export.
-const ENTRY_NAMES = ['main'] as const
+// entries is unnecessary until drop-action grows a default-export subpath.
+//
+// `snap-back` is the first opt-in subpath module (ADR-0004). It ships as a
+// second lib entry with its own export condition and .d.cts, establishing
+// the packaging pattern future modules follow. It is not imported by
+// `main`, so importing `drop-action` pulls none of its code.
+const ENTRY_NAMES = ['main', 'snap-back'] as const
 
 const copyDtsToCts = {
   name: 'copy-dts-to-cts',
@@ -40,6 +44,7 @@ export default defineConfig({
     lib: {
       entry: {
         main: resolve(import.meta.dirname, 'src/main.ts'),
+        'snap-back': resolve(import.meta.dirname, 'src/snap-back.tsx'),
       },
       formats: ['es', 'cjs'],
       fileName: (format, name) => `${name}.${format === 'cjs' ? 'cjs' : 'js'}`,

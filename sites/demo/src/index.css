@@ -82,3 +82,11 @@ body {
   border-color: #22c55e;
   color: #22c55e;
 }
+
+/* The rejecting Zone signals it will refuse the Drop while Over. */
+.zone--reject {
+  border-style: solid;
+  border-color: #ef4444;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+}
