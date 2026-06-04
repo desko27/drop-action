@@ -1,12 +1,13 @@
 import type { DropActionState } from './types.private'
 
-// The single inert snapshot: no active drag, no Over. Shared by the idle
-// client state and the server snapshot, and never mutated, so
+// The single inert snapshot: no active drag, no Over, no resolution. Shared
+// by the idle client state and the server snapshot, and never mutated, so
 // useSyncExternalStore sees a stable reference and does not loop
 // (ADR-0002). Frozen to make that contract enforced, not just intended.
 const INERT: DropActionState<unknown> = Object.freeze({
   active: null,
   over: null,
+  resolution: null,
 })
 
 // Per-Drop-Action store created inside the createDropAction closure (no
@@ -32,10 +33,6 @@ export function createStore<Data>() {
     },
     setState: (next: DropActionState<Data>) => {
       state = next
-      emit()
-    },
-    reset: () => {
-      state = INERT as DropActionState<Data>
       emit()
     },
   }

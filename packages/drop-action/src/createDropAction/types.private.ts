@@ -1,7 +1,9 @@
 import type {
   DraggedItem,
+  DropOutcome,
   DropStatus,
   Rect,
+  Transform,
   ZoneDropHandler,
 } from './types.public'
 
@@ -21,11 +23,27 @@ export type ActiveSnapshot<Data> = {
   transform: { x: number; y: number }
 }
 
+// The terminal snapshot the core publishes the instant a drag ends
+// (ADR-0013), read with `useResolution()`. Emitted atomically as `active`
+// becomes null and kept until the next drag starts. `transform` is the
+// Overlay delta at the end — the release point for a Drop or No-drop, the
+// live position for a Cancel — so a Return animation can ease from there
+// back to `originRect`.
+export type Resolution<Data> = {
+  outcome: DropOutcome
+  originRect: Rect
+  transform: Transform
+  item: DraggedItem<Data>
+}
+
 // The whole reactive snapshot read through useSyncExternalStore. `null`
 // active means no drag is in flight — the inert state the server yields.
+// `resolution` carries how the last drag ended; it persists between drags
+// so a consumer that renders after a drag can still read the outcome.
 export type DropActionState<Data> = {
   active: ActiveSnapshot<Data> | null
   over: string | null
+  resolution: Resolution<Data> | null
 }
 
 export type ItemRegistration<Data> = {

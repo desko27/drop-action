@@ -24,6 +24,7 @@ import type {
   ActiveSnapshot,
   DropListener,
   ItemRegistration,
+  Resolution,
   ZoneRegistration,
 } from './types.private'
 import type {
@@ -163,7 +164,6 @@ export function createDropAction<Data = unknown>(
     collisionDetection,
     activationConstraint: options.activationConstraint,
     setState: store.setState,
-    reset: store.reset,
   })
 
   const useDropActionState = () =>
@@ -177,6 +177,15 @@ export function createDropAction<Data = unknown>(
 
   function useActive(): ActiveSnapshot<Data> | null {
     return useDropActionState().active
+  }
+
+  // How the most recent drag ended (ADR-0013), or null before any drag has
+  // ended. Set the instant a drag resolves and kept until the next drag
+  // starts, so a Return animation (e.g. Snap-back) can read the outcome
+  // after `useActive` has already gone null. `outcome === 'accepted'` is the
+  // only non-Return ending.
+  function useResolution(): Resolution<Data> | null {
+    return useDropActionState().resolution
   }
 
   // The Active { id, data } while `zoneId` is the Over Zone, else null. At
@@ -403,6 +412,7 @@ export function createDropAction<Data = unknown>(
     useDragHandle,
     useDropEvent,
     useActive,
+    useResolution,
     useOver,
   }
 }

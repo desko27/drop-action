@@ -6,10 +6,14 @@ type CardData = { label: string }
 
 const DA = createDropAction<CardData>('demo')
 
-// Snap-back is the opt-in subpath module: a Reject eases the Overlay back to
-// the Item's origin rect; an Accept does not. <SnapBack> stands in for the
-// core <Active>, rendering the Overlay and keeping a ghost through the bounce.
-const { SnapBack } = createSnapBack(DA.useActive)
+// Snap-back is the opt-in subpath module: any Return (a Reject, a No-drop, or
+// a Cancel) eases the Overlay back to the Item's origin rect; an Accept does
+// not. <SnapBack> stands in for the core <Active>, rendering the Overlay and
+// keeping a ghost through the bounce.
+const { SnapBack } = createSnapBack({
+  useActive: DA.useActive,
+  useResolution: DA.useResolution,
+})
 
 // The accepting slot reads useOver to highlight itself while the Active Item
 // is the Over Zone — at most one Zone is Over at a time.

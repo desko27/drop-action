@@ -1,0 +1,8 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "drop-action": "0.1.0"
+  },
+  "changesets": []
+}

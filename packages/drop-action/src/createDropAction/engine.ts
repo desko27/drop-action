@@ -13,6 +13,7 @@ import type {
 import type {
   ActivationConstraint,
   DraggedItem,
+  DropOutcome,
   Measure,
   Modifier,
   Rect,
@@ -31,7 +32,6 @@ type EngineDeps<Data> = {
   collisionDetection: CollisionDetection
   activationConstraint?: ActivationConstraint
   setState: (state: DropActionState<Data>) => void
-  reset: () => void
 }
 
 const translate = (rect: Rect, x: number, y: number): Rect => ({
@@ -65,7 +65,6 @@ export function createEngine<Data>({
   collisionDetection,
   activationConstraint,
   setState,
-  reset,
 }: EngineDeps<Data>) {
   const constraint = resolveActivationConstraint(activationConstraint)
 
@@ -151,6 +150,26 @@ export function createEngine<Data>({
             transform,
           },
           over: overAt(px, py, transform),
+          // No resolution while a drag is live; publishing 'dragging' at the
+          // next drag's start is also what clears the prior resolution.
+          resolution: null,
+        })
+      }
+
+      // End the drag on a terminal outcome (ADR-0013): clear Active and Over
+      // and publish the resolution in the SAME emit, so one render sees
+      // `active === null` alongside the outcome. The resolution then lingers
+      // until the next drag's first `publish` overwrites it.
+      const resolve = (outcome: DropOutcome, transform: Transform) => {
+        setState({
+          active: null,
+          over: null,
+          resolution: {
+            outcome,
+            originRect,
+            transform,
+            item: { id, data: item.dataRef.current },
+          },
         })
       }
 
@@ -193,9 +212,10 @@ export function createEngine<Data>({
         const overId = overAt(e.clientX, e.clientY, transform)
         const dragged: DraggedItem<Data> = { id, data: item.dataRef.current }
 
-        // Released over nothing — an immediate Reject, no Dropping phase.
+        // Released over nothing — a No-drop (CONTEXT.md): no Zone, so no Drop
+        // and no Dropping phase. It is a Return, not a Reject.
         if (overId === null) {
-          reset()
+          resolve('no-drop', transform)
           return
         }
 
@@ -213,7 +233,7 @@ export function createEngine<Data>({
           if (settled) return
           settled = true
           if (accepted) item.onAcceptRef.current?.(dragged)
-          reset()
+          resolve(accepted ? 'accepted' : 'rejected', transform)
         }
 
         const respond: Respond = (status) => {
@@ -235,12 +255,13 @@ export function createEngine<Data>({
         )
       }
 
-      // Esc or pointercancel abort an in-flight drag with no Drop: onDrop and
-      // onAccept never run, and the store resets.
+      // Esc or pointercancel abort an in-flight drag: a Cancel (CONTEXT.md).
+      // No Drop, so onDrop and onAccept never run; we publish a 'cancelled'
+      // resolution from wherever the Overlay currently is and clear Active.
       const onCancel = (e?: PointerEvent) => {
         if (e && e.pointerId !== pointerId) return
         cleanup()
-        reset()
+        resolve('cancelled', resolveTransform(latestX, latestY))
       }
 
       const onKeyDown = (e: KeyboardEvent) => {
