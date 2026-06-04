@@ -79,8 +79,11 @@ _Avoid_: Pending (bare), loading, settling, resolving.
 
 **Over**:
 The single Zone the Active Item is currently judged to be over. At most
-one Zone is Over at a time per Drop Action. Read with `useOver(zoneId)`,
-which reports the Active `{ id, data }` while that Zone is the Over one.
+one Zone is Over at a time per Drop Action. Which Zone is Over is
+resolved input-agnostically — by collision detection during a pointer
+drag, or by a keyboard driver (by Zone index) once that module is
+present. Read with `useOver(zoneId)`, which reports the Active
+`{ id, data }` while that Zone is the Over one.
 _Avoid_: Hover, target, current zone.
 
 **Collision detection**:
@@ -112,6 +115,13 @@ Reorderable-list behaviour — the auto-opening gap/placeholder showing
 where a dragged Item will land within an ordered list. Anticipated as an
 opt-in subpath module (like Snap-back), not part of the headless core.
 _Avoid_: Reorder (bare), DnD list, sortable list.
+
+**Keyboard module**:
+Keyboard dragging (grab, move between Zones by arrow keys, drop, cancel)
+plus screen-reader `aria-live` announcements. Opt-in subpath module; the
+pointer-only core exposes an input-agnostic Over so this module needs no
+engine changes.
+_Avoid_: a11y module (bare), sensor.
 
 ### Input
 
