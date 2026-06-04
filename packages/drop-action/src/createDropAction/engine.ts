@@ -1,11 +1,18 @@
-import { rectIntersection } from './collision'
+import type { CollisionDetection } from './collision'
 import type {
   DropActionState,
   DropListener,
   ItemRegistration,
   ZoneRegistration,
 } from './types.private'
-import type { DraggedItem, Measure, Rect } from './types.public'
+import type {
+  DraggedItem,
+  Measure,
+  Modifier,
+  Rect,
+  Respond,
+  Transform,
+} from './types.public'
 
 type EngineDeps<Data> = {
   items: Map<string, ItemRegistration<Data>>
@@ -14,6 +21,8 @@ type EngineDeps<Data> = {
   // (issue #9): a Drop fires every listener registered for the Over zone.
   dropListeners: Map<string, Set<DropListener<Data>>>
   measure: Measure
+  modifiers: Modifier[]
+  collisionDetection: CollisionDetection
   setState: (state: DropActionState<Data>) => void
   reset: () => void
 }
@@ -35,6 +44,8 @@ export function createEngine<Data>({
   zones,
   dropListeners,
   measure,
+  modifiers,
+  collisionDetection,
   setState,
   reset,
 }: EngineDeps<Data>) {
@@ -64,32 +75,61 @@ export function createEngine<Data>({
     let latestY = startY
     let frame: number | null = null
 
-    const overAt = (px: number, py: number): string | null => {
-      // Collision runs against the post-modifier Overlay rect, not the raw
-      // pointer (ADR-0007). The skeleton ships no modifiers, so the Overlay
-      // is the origin rect shifted by the raw pointer delta.
-      const overlayRect = translate(originRect, px - startX, py - startY)
-      return rectIntersection({ overlayRect, zones: zoneRects })
+    // Run the modifier pipeline left-to-right, each modifier feeding the
+    // next, starting from the raw pointer delta (ADR-0007). The result is
+    // the Overlay transform — used for BOTH the published transform and the
+    // rect collision tests against, so Over always matches the visibly
+    // constrained Overlay. Window dims are read here and injected so the
+    // built-ins stay pure.
+    const resolveTransform = (px: number, py: number): Transform => {
+      const pointer = { x: px, y: py }
+      let transform: Transform = { x: px - startX, y: py - startY }
+      for (const modifier of modifiers) {
+        transform = modifier({
+          transform,
+          originRect,
+          pointer,
+          windowWidth: window.innerWidth,
+          windowHeight: window.innerHeight,
+        })
+      }
+      return transform
     }
 
-    const publish = (px: number, py: number) => {
+    // Collision runs against the post-modifier Overlay rect, not the raw
+    // pointer (ADR-0007), so a constrained Overlay only registers Over where
+    // it can visually reach. The configured detector also gets the live
+    // pointer (needed by `pointerWithin`) — ADR-0006.
+    const overAt = (px: number, py: number, transform: Transform) =>
+      collisionDetection({
+        pointer: { x: px, y: py },
+        overlayRect: translate(originRect, transform.x, transform.y),
+        zones: zoneRects,
+      })
+
+    const publish = (
+      px: number,
+      py: number,
+      status: 'dragging' | 'dropping',
+    ) => {
+      const transform = resolveTransform(px, py)
       setState({
         active: {
           id,
           data: item.dataRef.current,
-          status: 'dragging',
+          status,
           originRect,
-          transform: { x: px - startX, y: py - startY },
+          transform,
         },
-        over: overAt(px, py),
+        over: overAt(px, py, transform),
       })
     }
 
-    publish(startX, startY)
+    publish(startX, startY, 'dragging')
 
     const flush = () => {
       frame = null
-      publish(latestX, latestY)
+      publish(latestX, latestY, 'dragging')
     }
 
     const onMove = (e: PointerEvent) => {
@@ -99,44 +139,83 @@ export function createEngine<Data>({
       if (frame === null) frame = requestAnimationFrame(flush)
     }
 
-    const onUp = (e: PointerEvent) => {
+    // Tear down every listener and any pending frame. Called on every exit
+    // path — resolution and cancellation alike — so nothing leaks.
+    const cleanup = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('keydown', onKeyDown)
       if (frame !== null) cancelAnimationFrame(frame)
+    }
+
+    const onUp = (e: PointerEvent) => {
+      cleanup()
 
       // Resolve against the final pointer position, regardless of whether a
-      // throttled frame had a chance to fire.
-      const overId = overAt(e.clientX, e.clientY)
+      // throttled frame had a chance to fire. The same post-modifier
+      // transform that drives the Overlay drives this resolution.
+      const transform = resolveTransform(e.clientX, e.clientY)
+      const overId = overAt(e.clientX, e.clientY, transform)
       const dragged: DraggedItem<Data> = { id, data: item.dataRef.current }
 
-      if (overId !== null) {
-        // The Zone decides; the Item reacts (ADR-0003). respond('accepted')
-        // is the only path that runs onAccept — never responding rejects.
-        // Accept is idempotent so that, with several listeners on one Over
-        // Zone, the first 'accepted' wins and later ones are no-ops.
-        let accepted = false
-        const respond = (status: 'accepted') => {
-          if (status === 'accepted' && !accepted) {
-            accepted = true
-            item.onAcceptRef.current?.(dragged)
-          }
-        }
-        // Fire every handler registered for the Over zoneId — a Zone's own
-        // onDrop and any remote `useDropEvent` listeners alike (issue #9).
-        // Snapshot first so a handler that unsubscribes mid-Drop is safe.
-        const listeners = dropListeners.get(overId)
-        if (listeners) {
-          for (const listener of [...listeners]) {
-            listener.current(dragged, respond)
-          }
-        }
+      // Released over nothing — an immediate Reject, no Dropping phase.
+      if (overId === null) {
+        reset()
+        return
       }
 
+      // Enter the Dropping phase: the Overlay persists (status 'dropping',
+      // origin rect and over kept) across the async gap between release and
+      // resolution (ADR-0004). Collision is frozen at the release position.
+      publish(e.clientX, e.clientY, 'dropping')
+
+      // The Zone decides; the Item reacts (ADR-0003). respond('accepted') is
+      // the only path that runs onAccept; anything else, including never
+      // responding, is a Reject. Resolution acts once (idempotent-safe), so
+      // with several listeners on one Over Zone the first 'accepted' wins.
+      let settled = false
+      const finish = (accepted: boolean) => {
+        if (settled) return
+        settled = true
+        if (accepted) item.onAcceptRef.current?.(dragged)
+        reset()
+      }
+
+      const respond: Respond = (status) => {
+        if (status === 'accepted') finish(true)
+      }
+
+      // Fire every handler registered for the Over zoneId — a Zone's own
+      // onDrop and any remote `useDropEvent` listeners alike (issue #9).
+      // Snapshot first so a handler that unsubscribes mid-Drop is safe. Each
+      // may respond synchronously, await before responding, or return a
+      // Promise; once all have settled without an accept, that is a Reject,
+      // so the Overlay never sticks.
+      const listeners = dropListeners.get(overId)
+      const results = listeners
+        ? [...listeners].map((listener) => listener.current(dragged, respond))
+        : []
+      Promise.allSettled(results.map((r) => Promise.resolve(r))).then(() =>
+        finish(false),
+      )
+    }
+
+    // Esc or pointercancel abort an in-flight drag with no Drop: onDrop and
+    // onAccept never run, and the store resets.
+    const onCancel = () => {
+      cleanup()
       reset()
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
     }
 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('keydown', onKeyDown)
   }
 
   return { startDrag }
