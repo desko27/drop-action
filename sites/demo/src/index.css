@@ -68,3 +68,69 @@ body {
   border-color: #22c55e;
   color: #22c55e;
 }
+
+.section {
+  margin-top: 4rem;
+}
+
+.list-layout {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-top: 1.5rem;
+}
+
+/* A fixed-height scroll container: on touch, swiping it scrolls (the
+   activation constraint's touch delay leaves the gesture to the browser),
+   while a press-and-hold drags an item out. */
+.list {
+  flex: 1;
+  max-height: 16rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid #1e293b;
+  border-radius: 0.75rem;
+  background: #0b1220;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.5rem;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-weight: 600;
+  cursor: grab;
+}
+
+.list-item[data-dragging] {
+  opacity: 0.4;
+}
+
+.list-item__grip {
+  color: #64748b;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.list-item--overlay {
+  cursor: grabbing;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+}
+
+.tray {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 16rem;
+  border: 2px dashed #475569;
+  border-radius: 0.75rem;
+  color: #94a3b8;
+  text-align: center;
+  padding: 0 0.75rem;
+}

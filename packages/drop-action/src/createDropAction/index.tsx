@@ -21,9 +21,19 @@ import type {
   ZoneDropHandler,
 } from './types.public'
 
+// The handle is grabbable but does NOT statically suppress touch scrolling
+// (ADR-0012): a touch list must stay scrollable until a press-and-hold
+// actually starts a drag. `touch-action: none` is therefore applied only
+// while this Item is being dragged (see `dragHandleProps.style` below), so a
+// quick swipe scrolls and the engine's pending-activation phase decides
+// whether the press becomes a drag.
 const HANDLE_STYLE: CSSProperties = {
-  touchAction: 'none',
   userSelect: 'none',
+}
+
+const DRAGGING_HANDLE_STYLE: CSSProperties = {
+  ...HANDLE_STYLE,
+  touchAction: 'none',
 }
 
 type UseItemOptions<Data> = {
@@ -71,6 +81,7 @@ export function createDropAction<Data = unknown>(
     items,
     zones,
     measure,
+    activationConstraint: options.activationConstraint,
     setState: store.setState,
     reset: store.reset,
   })
@@ -121,7 +132,9 @@ export function createDropAction<Data = unknown>(
       role: 'button',
       tabIndex: 0,
       'aria-roledescription': 'draggable',
-      style: HANDLE_STYLE,
+      // Only suppress touch scrolling once a drag is under way; pre-drag the
+      // handle keeps default touch-action so a swipe can scroll (ADR-0012).
+      style: isDragging ? DRAGGING_HANDLE_STYLE : HANDLE_STYLE,
     } as const
 
     return { ref, dragHandleProps, isDragging }

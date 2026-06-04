@@ -41,6 +41,30 @@ export type MeasureTarget = {
 }
 export type Measure = (target: MeasureTarget) => Rect
 
+// The three pointer kinds the activation constraint distinguishes. A raw
+// PointerEvent.pointerType is mapped onto these (unknown types → 'mouse').
+export type PointerKind = 'mouse' | 'pen' | 'touch'
+
+// A distance gesture: the press becomes a drag once the pointer moves this
+// many CSS pixels from where it went down. Used for mouse and pen.
+export type DistanceActivation = { distance: number }
+
+// A delay gesture: the press becomes a drag once it is held for `delay`
+// milliseconds without moving more than `tolerance` pixels. Moving beyond
+// the tolerance before the delay elapses abandons activation (a scroll).
+// Used for touch, so quick swipes scroll while press-and-hold drags.
+export type DelayActivation = { delay: number; tolerance: number }
+
+// The per-Drop-Action gesture model (ADR-0012). Configured once on
+// createDropAction, never per Item. Each pointer kind is optional; any kind
+// left unset falls back to the pointer-type-aware default.
+export type ActivationConstraint = {
+  mouse?: DistanceActivation
+  pen?: DistanceActivation
+  touch?: DelayActivation
+}
+
 export type CreateDropActionOptions = {
   measure?: Measure
+  activationConstraint?: ActivationConstraint
 }
