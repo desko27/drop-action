@@ -4,7 +4,7 @@ import type {
   ItemRegistration,
   ZoneRegistration,
 } from './types.private'
-import type { DraggedItem, Measure, Rect } from './types.public'
+import type { DraggedItem, Measure, Rect, Respond } from './types.public'
 
 type EngineDeps<Data> = {
   items: Map<string, ItemRegistration<Data>>
@@ -67,24 +67,29 @@ export function createEngine<Data>({
       return rectIntersection({ overlayRect, zones: zoneRects })
     }
 
-    const publish = (px: number, py: number) => {
+    const publish = (
+      px: number,
+      py: number,
+      status: 'dragging' | 'dropping',
+      over: string | null,
+    ) => {
       setState({
         active: {
           id,
           data: item.dataRef.current,
-          status: 'dragging',
+          status,
           originRect,
           transform: { x: px - startX, y: py - startY },
         },
-        over: overAt(px, py),
+        over,
       })
     }
 
-    publish(startX, startY)
+    publish(startX, startY, 'dragging', overAt(startX, startY))
 
     const flush = () => {
       frame = null
-      publish(latestX, latestY)
+      publish(latestX, latestY, 'dragging', overAt(latestX, latestY))
     }
 
     const onMove = (e: PointerEvent) => {
@@ -94,31 +99,81 @@ export function createEngine<Data>({
       if (frame === null) frame = requestAnimationFrame(flush)
     }
 
-    const onUp = (e: PointerEvent) => {
+    // Tear down every listener and any pending frame. Called on every exit
+    // path — resolution and cancellation alike — so nothing leaks.
+    const cleanup = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('keydown', onKeyDown)
       if (frame !== null) cancelAnimationFrame(frame)
+    }
+
+    const onUp = (e: PointerEvent) => {
+      cleanup()
 
       // Resolve against the final pointer position, regardless of whether a
       // throttled frame had a chance to fire.
       const overId = overAt(e.clientX, e.clientY)
       const dragged: DraggedItem<Data> = { id, data: item.dataRef.current }
 
-      if (overId !== null) {
-        const zone = zones.get(overId)
-        // The Zone decides; the Item reacts (ADR-0003). respond('accepted')
-        // is the only path that runs onAccept — never responding rejects.
-        const respond = (status: 'accepted') => {
-          if (status === 'accepted') item.onAcceptRef.current?.(dragged)
-        }
-        zone?.onDropRef.current(dragged, respond)
+      // Released over nothing — an immediate Reject, no Dropping phase.
+      if (overId === null) {
+        reset()
+        return
       }
 
+      // Enter the Dropping phase: the Overlay persists (status 'dropping',
+      // origin rect and over kept) across the async gap between release and
+      // resolution (ADR-0004). Collision is frozen at the release position.
+      publish(e.clientX, e.clientY, 'dropping', overId)
+
+      const zone = zones.get(overId)
+
+      // The Zone decides; the Item reacts (ADR-0003). respond('accepted') is
+      // the only path that runs onAccept; anything else, including never
+      // responding, is a Reject. Resolution acts once (idempotent-safe).
+      let settled = false
+      const finish = (accepted: boolean) => {
+        if (settled) return
+        settled = true
+        if (accepted) item.onAcceptRef.current?.(dragged)
+        reset()
+      }
+
+      const respond: Respond = (status) => {
+        if (status === 'accepted') finish(true)
+      }
+
+      // onDrop may resolve synchronously, await before calling respond, or
+      // return a Promise. Await its settlement too: if the handler completes
+      // without an accept, that is a Reject — so the Overlay never sticks. A
+      // synchronous respond('accepted') has already settled by then, leaving
+      // the trailing reject a no-op.
+      const result = zone?.onDropRef.current(dragged, respond) as
+        | undefined
+        | PromiseLike<unknown>
+      Promise.resolve(result).then(
+        () => finish(false),
+        () => finish(false),
+      )
+    }
+
+    // Esc or pointercancel abort an in-flight drag with no Drop: onDrop and
+    // onAccept never run, and the store resets.
+    const onCancel = () => {
+      cleanup()
       reset()
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
     }
 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('keydown', onKeyDown)
   }
 
   return { startDrag }
