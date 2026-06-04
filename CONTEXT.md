@@ -64,8 +64,30 @@ _Avoid_: Release, drop event (bare).
 The two outcomes of a Drop, decided by the Zone through `respond`.
 Accept is explicit and opt-in — the Zone must call `respond('accepted')`;
 anything else, including never responding, is a Reject. Resolution may be
-asynchronous: the Zone can await I/O before responding.
+asynchronous: the Zone can await I/O before responding. A Reject requires a
+Drop — a release over a Zone; a drag that never reaches a Zone (No-drop,
+Cancel) is not a Reject.
 _Avoid_: Approve/deny, allow/block, success/failure.
+
+**No-drop**:
+A release while no Zone is Over — a pointer-up landing on no target, so no
+Drop occurs and no Zone decides. Like Cancel and unlike Reject, no Zone is
+involved.
+_Avoid_: Miss, reject, drop on nothing.
+
+**Cancel**:
+An in-flight drag aborted before any Drop — via Esc or pointercancel — so
+no Zone is involved and no Drop occurs. Distinct from a Reject: a Reject is
+a Zone's decision on a real Drop, whereas a Cancel never reaches a Zone.
+_Avoid_: Abort, reject, escape.
+
+**Return**:
+The umbrella outcome of a drag that ends without an Accept — a Reject, a
+No-drop, or a Cancel. In every Return the Active Item goes back to its
+origin instead of landing; Snap-back is the animation of a Return. Accept
+is the only non-Return outcome.
+_Avoid_: Revert, cancel (Cancel is one kind of Return), snap-back (that is
+the animation, not the outcome).
 
 **Dropping**:
 The pending phase between an Item's release and the Drop resolving
@@ -104,11 +126,12 @@ _Avoid_: Constraint (that is the Activation constraint), transformer.
 ### Optional modules
 
 **Snap-back**:
-The reject animation that returns the Overlay to the Item's origin rect.
+The Return animation: it brings the Overlay back to the Item's origin rect
+whenever a drag ends without an Accept (a Reject, a No-drop, or a Cancel).
 Not part of the headless core — it ships as the opt-in subpath module
-`drop-action/snap-back`, built on the `status` and origin rect the core
-exposes.
-_Avoid_: Bounce-back, revert, return-to-origin.
+`drop-action/snap-back`, built on the resolution state and origin rect the
+core exposes.
+_Avoid_: Bounce-back, revert, reject animation (it is not Reject-only).
 
 **Sortable**:
 Reorderable-list behaviour — the auto-opening gap/placeholder showing
@@ -141,5 +164,9 @@ _Avoid_: Threshold (bare), tolerance, sensor delay.
 - On a **Drop**, the **Zone** decides the outcome (**Accept** / **Reject**
   via `respond`) and the accepted **Item** reacts (`onAccept`). The
   decision lives on the Zone; the consequence lives on the Item.
+- A drag ends in one of four terminal outcomes: **Accept** and **Reject**
+  (the two outcomes of a **Drop**), or **No-drop** and **Cancel** (endings
+  with no Drop and no Zone). The three non-Accept outcomes form a
+  **Return**, which **Snap-back** animates.
 - Exactly one **Item** is **Active** at a time across a Drop Action; the
   **Overlay** renders that Active Item until the Drop resolves.

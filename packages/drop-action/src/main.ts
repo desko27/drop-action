@@ -15,7 +15,10 @@ export {
   restrictToWindowEdges,
   snapToGrid,
 } from './createDropAction/modifiers'
-export type { ActiveSnapshot } from './createDropAction/types.private'
+export type {
+  ActiveSnapshot,
+  Resolution,
+} from './createDropAction/types.private'
 export type {
   ActivationConstraint,
   CreateDropActionOptions,
@@ -24,6 +27,7 @@ export type {
   DraggedItem,
   DragHandleAria,
   DragHandleProps,
+  DropOutcome,
   DropStatus,
   ItemHandleProps,
   Measure,

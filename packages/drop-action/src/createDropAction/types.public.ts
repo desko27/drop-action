@@ -28,6 +28,13 @@ export type DraggedItem<Data = unknown> = {
 // status is part of the shape every later slice inherits.
 export type DropStatus = 'dragging' | 'dropping'
 
+// The four mutually exclusive terminal outcomes of a drag (CONTEXT.md —
+// Return, ADR-0013). A Drop over a Zone resolves to 'accepted' or
+// 'rejected'; a drag that never reaches a Zone ends as 'no-drop' (released
+// over nothing) or 'cancelled' (Esc / pointercancel before any Drop). The
+// three non-'accepted' outcomes form a Return — what Snap-back animates.
+export type DropOutcome = 'accepted' | 'rejected' | 'no-drop' | 'cancelled'
+
 // Accept is explicit and opt-in: only `respond('accepted')` accepts;
 // anything else, including never responding, is a Reject (ADR-0003).
 export type Respond = (status: 'accepted') => void
