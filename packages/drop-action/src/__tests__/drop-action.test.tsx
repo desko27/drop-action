@@ -168,6 +168,143 @@ describe('createDropAction — public API behaviour', () => {
     expect(screen.queryByTestId('overlay')).toBeNull()
   })
 
+  test('useActive reflects the Active Item (id, data, status, originRect) during a drag and is null otherwise', () => {
+    const DA = createDropAction<Data>('use-active', { measure })
+    function Probe() {
+      const active = DA.useActive()
+      if (!active) return <div data-testid="active">none</div>
+      return (
+        <div data-testid="active">
+          {active.id}:{active.data.label}:{active.status}:
+          {active.originRect.top},{active.originRect.left}
+        </div>
+      )
+    }
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <Probe />
+      </>,
+    )
+
+    expect(screen.getByTestId('active')).toHaveTextContent('none')
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+
+    // id, data, status and the source Item's origin rect are all readable.
+    expect(screen.getByTestId('active')).toHaveTextContent(
+      'card:Card:dragging:0,0',
+    )
+
+    release(ZONE_CENTER)
+    expect(screen.getByTestId('active')).toHaveTextContent('none')
+  })
+
+  test('useOver is truthy only while the Active Item is Over that Zone, and at most one Zone is Over', () => {
+    const DA = createDropAction<Data>('use-over', { measure })
+    function Probe({ zoneId }: { zoneId: string }) {
+      const over = DA.useOver(zoneId)
+      return <div data-testid={`over-${zoneId}`}>{over ? over.id : 'none'}</div>
+    }
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <DA.Zone id="other" onDrop={() => {}}>
+          other
+        </DA.Zone>
+        <Probe zoneId="slot" />
+        <Probe zoneId="other" />
+      </>,
+    )
+
+    // Idle: no Zone is Over.
+    expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
+    expect(screen.getByTestId('over-other')).toHaveTextContent('none')
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    // The Overlay starts over the Item's origin — not over any Zone yet.
+    expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
+    expect(screen.getByTestId('over-other')).toHaveTextContent('none')
+
+    // Both Zones share the synthetic ZONE_RECT here; the collision detector
+    // returns a single winner, so exactly one Zone is ever Over.
+    move(ZONE_CENTER)
+    const slotOver = screen.getByTestId('over-slot').textContent === 'card'
+    const otherOver = screen.getByTestId('over-other').textContent === 'card'
+    expect(slotOver !== otherOver).toBe(true)
+
+    release(ZONE_CENTER)
+    expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
+    expect(screen.getByTestId('over-other')).toHaveTextContent('none')
+  })
+
+  test('useItem(...).isDragging is true for the dragged Item and false otherwise', () => {
+    const DA = createDropAction<Data>('is-dragging', { measure })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }} className="card">
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    const item = screen.getByRole('button')
+    // The component surfaces isDragging as a data attribute.
+    expect(item).not.toHaveAttribute('data-dragging')
+
+    press(item, ITEM_CENTER)
+    move(ZONE_CENTER)
+    expect(item).toHaveAttribute('data-dragging')
+
+    release(ZONE_CENTER)
+    expect(item).not.toHaveAttribute('data-dragging')
+  })
+
+  test('Active redirects the portal to a custom container', () => {
+    const DA = createDropAction<Data>('container', { measure })
+    const container = document.createElement('div')
+    container.id = 'overlay-host'
+    document.body.appendChild(container)
+
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <DA.Active container={container}>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+
+    const overlay = screen.getByTestId('overlay').parentElement
+    // Portalled into the custom container, not directly into document.body.
+    expect(overlay?.parentElement).toBe(container)
+
+    release(ZONE_CENTER)
+    container.remove()
+  })
+
   test('an Item and a Zone sharing an id do not collide', () => {
     const DA = createDropAction<Data>('shared-id', { measure })
     const onDrop = vi.fn()
