@@ -222,7 +222,10 @@ describe('headless ergonomics — custom drag handle (ADR-0009)', () => {
     expect(handle).toHaveAttribute('role', 'button')
     expect(handle).toHaveAttribute('tabindex', '0')
     expect(handle).toHaveAttribute('aria-roledescription', 'draggable')
-    expect(handle).toHaveStyle({ touchAction: 'none', userSelect: 'none' })
+    // Idle: userSelect is suppressed; touch-action stays default so a touch
+    // list scrolls until a drag actually begins (ADR-0012). touch-action:none
+    // is applied only while dragging.
+    expect(handle).toHaveStyle({ userSelect: 'none' })
   })
 })
 
@@ -237,6 +240,8 @@ describe('headless ergonomics — default Item ARIA defaults', () => {
     const handle = screen.getByRole('button')
     expect(handle).toHaveAttribute('tabindex', '0')
     expect(handle).toHaveAttribute('aria-roledescription', 'draggable')
-    expect(handle).toHaveStyle({ touchAction: 'none', userSelect: 'none' })
+    // Idle: only userSelect is suppressed; touch-action:none applies while
+    // dragging (ADR-0012), so a touch list stays scrollable until activation.
+    expect(handle).toHaveStyle({ userSelect: 'none' })
   })
 })

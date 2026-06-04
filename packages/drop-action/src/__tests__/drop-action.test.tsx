@@ -495,6 +495,119 @@ describe('createDropAction — public API behaviour', () => {
     expect(onA).not.toHaveBeenCalled()
   })
 
+  test('a mouse move below the distance threshold does not start a drag', () => {
+    const DA = createDropAction<Data>('below-threshold', { measure })
+    const onDrop = vi.fn()
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+      </>,
+    )
+
+    // Press, nudge 2px (under the 4px mouse default), release: a click.
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move({ x: ITEM_CENTER.x + 2, y: ITEM_CENTER.y })
+    // No Active state was ever published while below the threshold.
+    expect(screen.queryByTestId('overlay')).toBeNull()
+    release({ x: ITEM_CENTER.x + 2, y: ITEM_CENTER.y })
+
+    expect(onDrop).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('overlay')).toBeNull()
+  })
+
+  test('a mouse move past the distance threshold starts a drag', () => {
+    const DA = createDropAction<Data>('above-threshold', { measure })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    // 10px crosses the 4px default → the drag begins and the Overlay mounts.
+    move({ x: ITEM_CENTER.x + 10, y: ITEM_CENTER.y })
+    expect(screen.queryByTestId('overlay')).not.toBeNull()
+  })
+
+  test('touch activates on press-and-hold, not on a quick swipe', () => {
+    vi.useFakeTimers()
+    try {
+      const DA = createDropAction<Data>('touch', {
+        measure,
+        activationConstraint: { touch: { delay: 250, tolerance: 5 } },
+      })
+      const onDrop = vi.fn()
+      const view = render(
+        <>
+          <DA.Item id="card" data={{ label: 'Card' }}>
+            card
+          </DA.Item>
+          <DA.Zone id="slot" onDrop={onDrop}>
+            slot
+          </DA.Zone>
+          <DA.Active>
+            {({ data }) => <div data-testid="overlay">{data.label}</div>}
+          </DA.Active>
+        </>,
+      )
+
+      // A quick swipe: move beyond tolerance before the delay → it scrolls,
+      // never drags. No Overlay, no drop.
+      fireEvent.pointerDown(screen.getByRole('button'), {
+        clientX: ITEM_CENTER.x,
+        clientY: ITEM_CENTER.y,
+        pointerId: 1,
+        pointerType: 'touch',
+      })
+      fireEvent.pointerMove(window, {
+        clientX: ITEM_CENTER.x,
+        clientY: ITEM_CENTER.y + 40,
+        pointerId: 1,
+        pointerType: 'touch',
+      })
+      act(() => vi.advanceTimersByTime(300))
+      expect(screen.queryByTestId('overlay')).toBeNull()
+      fireEvent.pointerUp(window, {
+        clientX: ITEM_CENTER.x,
+        clientY: ITEM_CENTER.y + 40,
+        pointerId: 1,
+        pointerType: 'touch',
+      })
+      expect(onDrop).not.toHaveBeenCalled()
+
+      // A press-and-hold in place: held past the delay → the drag begins.
+      fireEvent.pointerDown(screen.getByRole('button'), {
+        clientX: ITEM_CENTER.x,
+        clientY: ITEM_CENTER.y,
+        pointerId: 2,
+        pointerType: 'touch',
+      })
+      expect(screen.queryByTestId('overlay')).toBeNull()
+      act(() => vi.advanceTimersByTime(250))
+      expect(screen.queryByTestId('overlay')).not.toBeNull()
+
+      view.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   test('an Item and a Zone sharing an id do not collide', () => {
     const DA = createDropAction<Data>('shared-id', { measure })
     const onDrop = vi.fn()

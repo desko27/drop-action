@@ -17,7 +17,10 @@ export {
 } from './createDropAction/modifiers'
 export type { ActiveSnapshot } from './createDropAction/types.private'
 export type {
+  ActivationConstraint,
   CreateDropActionOptions,
+  DelayActivation,
+  DistanceActivation,
   DraggedItem,
   DragHandleAria,
   DragHandleProps,
@@ -27,6 +30,7 @@ export type {
   MeasureTarget,
   Modifier,
   ModifierArgs,
+  PointerKind,
   Rect,
   Respond,
   Transform,
