@@ -4,5 +4,8 @@
   "initialVersions": {
     "drop-action": "0.1.0"
   },
-  "changesets": ["return-resolution"]
+  "changesets": [
+    "drop-verdict-accept-reject",
+    "return-resolution"
+  ]
 }
