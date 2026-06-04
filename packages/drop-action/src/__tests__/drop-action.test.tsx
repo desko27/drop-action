@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createDropAction } from '../main'
+import { createDropAction, restrictToVerticalAxis, snapToGrid } from '../main'
 import type { DraggedItem, Measure, Rect } from '../main'
 
 type Data = { label: string }
@@ -37,6 +37,12 @@ const move = (at: { x: number; y: number }) =>
   fireEvent.pointerMove(window, { clientX: at.x, clientY: at.y, pointerId: 1 })
 const release = (at: { x: number; y: number }) =>
   fireEvent.pointerUp(window, { clientX: at.x, clientY: at.y, pointerId: 1 })
+const cancel = () => fireEvent.pointerCancel(window, { pointerId: 1 })
+const pressEscape = () => fireEvent.keyDown(window, { key: 'Escape' })
+
+// Flush pending microtasks (Promise callbacks) inside act() so the store
+// updates the async drop resolution schedules are observed by React.
+const flush = () => act(async () => {})
 
 beforeEach(() => {
   // Run the engine's animation-frame throttle synchronously so a moved
@@ -124,7 +130,7 @@ describe('createDropAction — public API behaviour', () => {
     expect(onAccept).not.toHaveBeenCalled()
   })
 
-  test('the Active Overlay renders in a document.body portal and follows the pointer', () => {
+  test('the Active Overlay renders in a document.body portal and follows the pointer', async () => {
     const DA = createDropAction<Data>('overlay', { measure })
     render(
       <>
@@ -153,9 +159,221 @@ describe('createDropAction — public API behaviour', () => {
     // Origin (0,0) shifted by the pointer delta (200,0).
     expect(overlay?.style.transform).toBe('translate3d(200px, 0px, 0)')
 
-    // Releasing resolves the drop and tears the Overlay down.
+    // Releasing over a Zone enters the Dropping phase; the Overlay persists
+    // through the async gap. This Zone never responds → Reject, which only
+    // resolves on the next microtask, tearing the Overlay down.
     release(ZONE_CENTER)
+    expect(screen.queryByTestId('overlay')).not.toBeNull()
+    await flush()
     expect(screen.queryByTestId('overlay')).toBeNull()
+  })
+
+  test('a modifier drives the published transform AND collision (ADR-0007)', () => {
+    // restrictToVerticalAxis zeroes x. The Zone sits to the right (left:200),
+    // so an x-zeroed Overlay can never reach it — Over must be null and the
+    // drop must not fire, even though the pointer travels onto the Zone.
+    const DA = createDropAction<Data>('vertical', {
+      measure,
+      modifiers: [restrictToVerticalAxis],
+    })
+    const onDrop = vi.fn()
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move({ x: ZONE_CENTER.x, y: 80 })
+
+    // The published transform is post-modifier: x clamped to 0, y kept.
+    const overlay = screen.getByTestId('overlay').parentElement
+    expect(overlay?.style.transform).toBe('translate3d(0px, 30px, 0)')
+
+    release({ x: ZONE_CENTER.x, y: 80 })
+    // Over never matched the Zone, so no drop resolved.
+    expect(onDrop).not.toHaveBeenCalled()
+  })
+
+  test('snapToGrid rounds the published transform to the grid', () => {
+    const DA = createDropAction<Data>('grid', {
+      measure,
+      modifiers: [snapToGrid(50)],
+    })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    // Pointer delta (70, 30) snaps to the nearest multiples of 50 → (50, 50).
+    move({ x: ITEM_CENTER.x + 70, y: ITEM_CENTER.y + 30 })
+
+    const overlay = screen.getByTestId('overlay').parentElement
+    expect(overlay?.style.transform).toBe('translate3d(50px, 50px, 0)')
+  })
+
+  test('useActive reflects the Active Item (id, data, status, originRect) during a drag and is null otherwise', async () => {
+    const DA = createDropAction<Data>('use-active', { measure })
+    function Probe() {
+      const active = DA.useActive()
+      if (!active) return <div data-testid="active">none</div>
+      return (
+        <div data-testid="active">
+          {active.id}:{active.data.label}:{active.status}:
+          {active.originRect.top},{active.originRect.left}
+        </div>
+      )
+    }
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <Probe />
+      </>,
+    )
+
+    expect(screen.getByTestId('active')).toHaveTextContent('none')
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+
+    // id, data, status and the source Item's origin rect are all readable.
+    expect(screen.getByTestId('active')).toHaveTextContent(
+      'card:Card:dragging:0,0',
+    )
+
+    // Releasing over a Zone enters the Dropping phase; the Reject resolves on
+    // the next microtask, tearing the Active state back down to idle.
+    release(ZONE_CENTER)
+    await flush()
+    expect(screen.getByTestId('active')).toHaveTextContent('none')
+  })
+
+  test('useOver is truthy only while the Active Item is Over that Zone, and at most one Zone is Over', async () => {
+    const DA = createDropAction<Data>('use-over', { measure })
+    function Probe({ zoneId }: { zoneId: string }) {
+      const over = DA.useOver(zoneId)
+      return <div data-testid={`over-${zoneId}`}>{over ? over.id : 'none'}</div>
+    }
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <DA.Zone id="other" onDrop={() => {}}>
+          other
+        </DA.Zone>
+        <Probe zoneId="slot" />
+        <Probe zoneId="other" />
+      </>,
+    )
+
+    // Idle: no Zone is Over.
+    expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
+    expect(screen.getByTestId('over-other')).toHaveTextContent('none')
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    // The Overlay starts over the Item's origin — not over any Zone yet.
+    expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
+    expect(screen.getByTestId('over-other')).toHaveTextContent('none')
+
+    // Both Zones share the synthetic ZONE_RECT here; the collision detector
+    // returns a single winner, so exactly one Zone is ever Over.
+    move(ZONE_CENTER)
+    const slotOver = screen.getByTestId('over-slot').textContent === 'card'
+    const otherOver = screen.getByTestId('over-other').textContent === 'card'
+    expect(slotOver !== otherOver).toBe(true)
+
+    // Releasing over a Zone enters the Dropping phase; once the Reject
+    // resolves on the next microtask no Zone is Over again.
+    release(ZONE_CENTER)
+    await flush()
+    expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
+    expect(screen.getByTestId('over-other')).toHaveTextContent('none')
+  })
+
+  test('useItem(...).isDragging is true for the dragged Item and false otherwise', async () => {
+    const DA = createDropAction<Data>('is-dragging', { measure })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }} className="card">
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    const item = screen.getByRole('button')
+    // The component surfaces isDragging as a data attribute.
+    expect(item).not.toHaveAttribute('data-dragging')
+
+    press(item, ITEM_CENTER)
+    move(ZONE_CENTER)
+    expect(item).toHaveAttribute('data-dragging')
+
+    // Releasing over a Zone enters the Dropping phase; the Item is no longer
+    // dragging once the Reject resolves on the next microtask.
+    release(ZONE_CENTER)
+    await flush()
+    expect(item).not.toHaveAttribute('data-dragging')
+  })
+
+  test('Active redirects the portal to a custom container', () => {
+    const DA = createDropAction<Data>('container', { measure })
+    const container = document.createElement('div')
+    container.id = 'overlay-host'
+    document.body.appendChild(container)
+
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <DA.Active container={container}>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+
+    const overlay = screen.getByTestId('overlay').parentElement
+    // Portalled into the custom container, not directly into document.body.
+    expect(overlay?.parentElement).toBe(container)
+
+    release(ZONE_CENTER)
+    container.remove()
   })
 
   test('an Item and a Zone sharing an id do not collide', () => {
@@ -179,5 +397,183 @@ describe('createDropAction — public API behaviour', () => {
     expect(onDrop).toHaveBeenCalledTimes(1)
     const [dragged] = onDrop.mock.calls[0] as [DraggedItem<Data>]
     expect(dragged.id).toBe('x')
+  })
+})
+
+// Async resolution, the Dropping status, and cancellation (ADR-0003,
+// ADR-0004). A Drop may await before responding; only respond('accepted')
+// runs onAccept; Esc and pointercancel abort with no Drop at all.
+describe('createDropAction — async resolution, status, cancellation', () => {
+  test('a Zone that awaits before responding accepts after the delay', async () => {
+    const action = createDropAction<Data>('async-accept', { measure })
+    const onAccept = vi.fn()
+    let resolve: (() => void) | undefined
+    const onDrop = async (
+      _item: DraggedItem<Data>,
+      respond: (s: 'accepted') => void,
+    ) => {
+      await new Promise<void>((r) => {
+        resolve = r
+      })
+      respond('accepted')
+    }
+
+    render(
+      <>
+        <action.Item id="card" data={{ label: 'Card' }} onAccept={onAccept}>
+          card
+        </action.Item>
+        <action.Zone id="slot" onDrop={onDrop}>
+          slot
+        </action.Zone>
+        <action.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </action.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+
+    // Dropping phase: the Overlay persists while the handler is in flight,
+    // and onAccept has not run yet.
+    expect(screen.queryByTestId('overlay')).not.toBeNull()
+    expect(onAccept).not.toHaveBeenCalled()
+
+    resolve?.()
+    await flush()
+
+    expect(onAccept).toHaveBeenCalledTimes(1)
+    expect(onAccept).toHaveBeenCalledWith({
+      id: 'card',
+      data: { label: 'Card' },
+    })
+    expect(screen.queryByTestId('overlay')).toBeNull()
+  })
+
+  test('a Zone that awaits then never responds rejects after the delay', async () => {
+    const action = createDropAction<Data>('async-reject', { measure })
+    const onAccept = vi.fn()
+    let resolve: (() => void) | undefined
+    const onDrop = async () => {
+      await new Promise<void>((r) => {
+        resolve = r
+      })
+      // Returns without responding → Reject.
+    }
+
+    render(
+      <>
+        <action.Item id="card" data={{ label: 'Card' }} onAccept={onAccept}>
+          card
+        </action.Item>
+        <action.Zone id="slot" onDrop={onDrop}>
+          slot
+        </action.Zone>
+        <action.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </action.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+
+    expect(screen.queryByTestId('overlay')).not.toBeNull()
+
+    resolve?.()
+    await flush()
+
+    expect(onAccept).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('overlay')).toBeNull()
+  })
+
+  test('a synchronous respond("accepted") accepts within the release', async () => {
+    const action = createDropAction<Data>('sync-accept', { measure })
+    const onAccept = vi.fn()
+
+    render(
+      <>
+        <action.Item id="card" data={{ label: 'Card' }} onAccept={onAccept}>
+          card
+        </action.Item>
+        <action.Zone id="slot" onDrop={(_item, respond) => respond('accepted')}>
+          slot
+        </action.Zone>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+
+    // Synchronous accept resolves immediately — no microtask flush needed.
+    expect(onAccept).toHaveBeenCalledTimes(1)
+    await flush()
+    expect(onAccept).toHaveBeenCalledTimes(1)
+  })
+
+  test('Escape cancels an in-flight drag: no Drop, no onAccept, store resets', async () => {
+    const action = createDropAction<Data>('esc-cancel', { measure })
+    const onDrop = vi.fn()
+    const onAccept = vi.fn()
+
+    render(
+      <>
+        <action.Item id="card" data={{ label: 'Card' }} onAccept={onAccept}>
+          card
+        </action.Item>
+        <action.Zone id="slot" onDrop={onDrop}>
+          slot
+        </action.Zone>
+        <action.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </action.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    expect(screen.queryByTestId('overlay')).not.toBeNull()
+
+    pressEscape()
+    await flush()
+
+    expect(onDrop).not.toHaveBeenCalled()
+    expect(onAccept).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('overlay')).toBeNull()
+  })
+
+  test('pointercancel cancels an in-flight drag likewise', async () => {
+    const action = createDropAction<Data>('pointercancel', { measure })
+    const onDrop = vi.fn()
+    const onAccept = vi.fn()
+
+    render(
+      <>
+        <action.Item id="card" data={{ label: 'Card' }} onAccept={onAccept}>
+          card
+        </action.Item>
+        <action.Zone id="slot" onDrop={onDrop}>
+          slot
+        </action.Zone>
+        <action.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </action.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    expect(screen.queryByTestId('overlay')).not.toBeNull()
+
+    cancel()
+    await flush()
+
+    expect(onDrop).not.toHaveBeenCalled()
+    expect(onAccept).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('overlay')).toBeNull()
   })
 })

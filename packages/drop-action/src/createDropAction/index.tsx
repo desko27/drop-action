@@ -13,9 +13,11 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { rectIntersection } from './collision'
 import { composeRefs } from './composeRefs'
 import { createEngine } from './engine'
 import { defaultMeasure } from './measure'
+import { restrictToWindowEdges } from './modifiers'
 import { createStore } from './store'
 import type {
   ActiveSnapshot,
@@ -59,6 +61,9 @@ type ZoneProps<Data> = {
 type ActiveProps<Data> = {
   children: (item: DraggedItem<Data>) => ReactNode
   className?: string
+  // Overrides the portal target (Shadow DOM, a dialog). Defaults to
+  // `document.body` (ADR-0010).
+  container?: Element | DocumentFragment
 }
 
 // Merge the Drop Action's props onto a single existing child element via
@@ -110,6 +115,13 @@ export function createDropAction<Data = unknown>(
   options: CreateDropActionOptions = {},
 ) {
   const measure = options.measure ?? defaultMeasure
+  // Default to keeping the Overlay inside the viewport (ADR-0007). The
+  // pipeline drives both the Overlay transform and collision, so the
+  // default never lets Over register where the Overlay cannot reach.
+  const modifiers = options.modifiers ?? [restrictToWindowEdges]
+  // Default collision detection is `rectIntersection` (ADR-0006); a custom
+  // detector or another built-in can be supplied per Drop Action.
+  const collisionDetection = options.collisionDetection ?? rectIntersection
   const store = createStore<Data>()
 
   // Item ids and Zone ids occupy separate id spaces — two maps — so an
@@ -122,6 +134,8 @@ export function createDropAction<Data = unknown>(
     items,
     zones,
     measure,
+    modifiers,
+    collisionDetection,
     setState: store.setState,
     reset: store.reset,
   })
@@ -137,6 +151,15 @@ export function createDropAction<Data = unknown>(
 
   function useActive(): ActiveSnapshot<Data> | null {
     return useDropActionState().active
+  }
+
+  // The Active { id, data } while `zoneId` is the Over Zone, else null. At
+  // most one Zone is Over at a time (CONTEXT.md — Over), so this is truthy
+  // for exactly one Zone during a drag.
+  function useOver(zoneId: string): DraggedItem<Data> | null {
+    const { active, over } = useDropActionState()
+    if (!active || over !== zoneId) return null
+    return { id: active.id, data: active.data }
   }
 
   // The Item is always what is measured and travels. `dragHandleProps` is
@@ -286,7 +309,7 @@ export function createDropAction<Data = unknown>(
   // translate3d that starts over the Item's origin rect and follows the
   // pointer (ADR-0010). On the server `useActive` is inert (null), so this
   // returns before any document access — SSR-safe.
-  function Active({ children, className }: ActiveProps<Data>) {
+  function Active({ children, className, container }: ActiveProps<Data>) {
     const active = useActive()
     if (!active) return null
 
@@ -306,9 +329,18 @@ export function createDropAction<Data = unknown>(
       >
         {children({ id: active.id, data: active.data })}
       </div>,
-      document.body,
+      container ?? document.body,
     )
   }
 
-  return { Item, Zone, Active, useItem, useZone, useDragHandle, useActive }
+  return {
+    Item,
+    Zone,
+    Active,
+    useItem,
+    useZone,
+    useDragHandle,
+    useActive,
+    useOver,
+  }
 }
