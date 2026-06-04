@@ -1,4 +1,4 @@
-import { rectIntersection } from './collision'
+import type { CollisionDetection } from './collision'
 import type {
   DropActionState,
   ItemRegistration,
@@ -10,6 +10,7 @@ type EngineDeps<Data> = {
   items: Map<string, ItemRegistration<Data>>
   zones: Map<string, ZoneRegistration<Data>>
   measure: Measure
+  collisionDetection: CollisionDetection
   setState: (state: DropActionState<Data>) => void
   reset: () => void
 }
@@ -30,6 +31,7 @@ export function createEngine<Data>({
   items,
   zones,
   measure,
+  collisionDetection,
   setState,
   reset,
 }: EngineDeps<Data>) {
@@ -62,9 +64,14 @@ export function createEngine<Data>({
     const overAt = (px: number, py: number): string | null => {
       // Collision runs against the post-modifier Overlay rect, not the raw
       // pointer (ADR-0007). The skeleton ships no modifiers, so the Overlay
-      // is the origin rect shifted by the raw pointer delta.
+      // is the origin rect shifted by the raw pointer delta. The configured
+      // detector also gets the live pointer (needed by `pointerWithin`).
       const overlayRect = translate(originRect, px - startX, py - startY)
-      return rectIntersection({ overlayRect, zones: zoneRects })
+      return collisionDetection({
+        pointer: { x: px, y: py },
+        overlayRect,
+        zones: zoneRects,
+      })
     }
 
     const publish = (

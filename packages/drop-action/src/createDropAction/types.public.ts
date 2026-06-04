@@ -1,3 +1,8 @@
+// Type-only import of the detector contract. collision.ts imports `Rect`
+// from here; this back-reference is types-only, so it erases at build time
+// and pulls in none of the built-in detectors (they stay tree-shakeable).
+import type { CollisionDetection } from './collision'
+
 // A plain geometry snapshot. We avoid leaning on the live DOMRect so the
 // engine can run against injected (synthetic) rects in tests and, later,
 // non-DOM measuring strategies.
@@ -43,4 +48,7 @@ export type Measure = (target: MeasureTarget) => Rect
 
 export type CreateDropActionOptions = {
   measure?: Measure
+  // The strategy that picks which Zone is Over (ADR-0006). Defaults to
+  // `rectIntersection` in the factory.
+  collisionDetection?: CollisionDetection
 }
