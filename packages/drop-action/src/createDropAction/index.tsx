@@ -49,6 +49,9 @@ type ZoneProps<Data> = {
 type ActiveProps<Data> = {
   children: (item: DraggedItem<Data>) => ReactNode
   className?: string
+  // Overrides the portal target (Shadow DOM, a dialog). Defaults to
+  // `document.body` (ADR-0010).
+  container?: Element | DocumentFragment
 }
 
 // The factory: returns a namespace of peer components + hooks for one
@@ -91,6 +94,15 @@ export function createDropAction<Data = unknown>(
 
   function useActive(): ActiveSnapshot<Data> | null {
     return useDropActionState().active
+  }
+
+  // The Active { id, data } while `zoneId` is the Over Zone, else null. At
+  // most one Zone is Over at a time (CONTEXT.md — Over), so this is truthy
+  // for exactly one Zone during a drag.
+  function useOver(zoneId: string): DraggedItem<Data> | null {
+    const { active, over } = useDropActionState()
+    if (!active || over !== zoneId) return null
+    return { id: active.id, data: active.data }
   }
 
   function useItem(
@@ -176,7 +188,7 @@ export function createDropAction<Data = unknown>(
   // translate3d that starts over the Item's origin rect and follows the
   // pointer (ADR-0010). On the server `useActive` is inert (null), so this
   // returns before any document access — SSR-safe.
-  function Active({ children, className }: ActiveProps<Data>) {
+  function Active({ children, className, container }: ActiveProps<Data>) {
     const active = useActive()
     if (!active) return null
 
@@ -196,9 +208,9 @@ export function createDropAction<Data = unknown>(
       >
         {children({ id: active.id, data: active.data })}
       </div>,
-      document.body,
+      container ?? document.body,
     )
   }
 
-  return { Item, Zone, Active, useItem, useZone, useActive }
+  return { Item, Zone, Active, useItem, useZone, useActive, useOver }
 }

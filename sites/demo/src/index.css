@@ -71,6 +71,11 @@ body {
   cursor: grabbing;
 }
 
+/* The source Item dims while it is the one being dragged (isDragging). */
+.card[data-dragging] {
+  opacity: 0.4;
+}
+
 .zone {
   display: grid;
   place-items: center;
@@ -83,8 +88,25 @@ body {
   padding: 0 0.5rem;
 }
 
+/* The Over Zone — at most one at a time — lights up while the Active Item
+   is judged to be over it. */
+.zone--over {
+  border-style: solid;
+  border-color: #6366f1;
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.12);
+}
+
 .zone--filled {
   border-style: solid;
   border-color: #22c55e;
   color: #22c55e;
+}
+
+/* The rejecting Zone signals it will refuse the Drop while Over. */
+.zone--reject {
+  border-style: solid;
+  border-color: #ef4444;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
 }

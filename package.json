@@ -8,7 +8,7 @@
     "test:coverage": "vitest run --project unit --coverage",
     "test:dev": "vitest --project unit",
     "test:dist": "vitest run --project dist",
-    "dist-lint": "publint packages/drop-action --strict && attw --pack packages/drop-action",
+    "dist-lint": "publint packages/drop-action --strict && attw --pack packages/drop-action --profile node16",
     "dev": "pnpm --filter demo run dev",
     "size": "pnpm --filter drop-action run size",
     "add-changeset": "changeset",

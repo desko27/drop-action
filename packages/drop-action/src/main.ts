@@ -9,6 +9,7 @@ export type {
   CollisionDetection,
   ZoneRect,
 } from './createDropAction/collision'
+export type { ActiveSnapshot } from './createDropAction/types.private'
 export type {
   CreateDropActionOptions,
   DraggedItem,
