@@ -168,7 +168,7 @@ describe('createDropAction — public API behaviour', () => {
     expect(screen.queryByTestId('overlay')).toBeNull()
   })
 
-  test('useActive reflects the Active Item (id, data, status, originRect) during a drag and is null otherwise', () => {
+  test('useActive reflects the Active Item (id, data, status, originRect) during a drag and is null otherwise', async () => {
     const DA = createDropAction<Data>('use-active', { measure })
     function Probe() {
       const active = DA.useActive()
@@ -203,10 +203,13 @@ describe('createDropAction — public API behaviour', () => {
     )
 
     release(ZONE_CENTER)
+    // The Zone never responds → Reject, which resolves the Dropping phase on
+    // the next microtask before the Overlay clears (ADR-0003/#4).
+    await flush()
     expect(screen.getByTestId('active')).toHaveTextContent('none')
   })
 
-  test('useOver is truthy only while the Active Item is Over that Zone, and at most one Zone is Over', () => {
+  test('useOver is truthy only while the Active Item is Over that Zone, and at most one Zone is Over', async () => {
     const DA = createDropAction<Data>('use-over', { measure })
     function Probe({ zoneId }: { zoneId: string }) {
       const over = DA.useOver(zoneId)
@@ -245,11 +248,12 @@ describe('createDropAction — public API behaviour', () => {
     expect(slotOver !== otherOver).toBe(true)
 
     release(ZONE_CENTER)
+    await flush()
     expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
     expect(screen.getByTestId('over-other')).toHaveTextContent('none')
   })
 
-  test('useItem(...).isDragging is true for the dragged Item and false otherwise', () => {
+  test('useItem(...).isDragging is true for the dragged Item and false otherwise', async () => {
     const DA = createDropAction<Data>('is-dragging', { measure })
     render(
       <>
@@ -271,6 +275,7 @@ describe('createDropAction — public API behaviour', () => {
     expect(item).toHaveAttribute('data-dragging')
 
     release(ZONE_CENTER)
+    await flush()
     expect(item).not.toHaveAttribute('data-dragging')
   })
 
