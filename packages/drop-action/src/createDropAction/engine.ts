@@ -4,12 +4,19 @@ import type {
   ItemRegistration,
   ZoneRegistration,
 } from './types.private'
-import type { DraggedItem, Measure, Rect } from './types.public'
+import type {
+  DraggedItem,
+  Measure,
+  Modifier,
+  Rect,
+  Transform,
+} from './types.public'
 
 type EngineDeps<Data> = {
   items: Map<string, ItemRegistration<Data>>
   zones: Map<string, ZoneRegistration<Data>>
   measure: Measure
+  modifiers: Modifier[]
   setState: (state: DropActionState<Data>) => void
   reset: () => void
 }
@@ -30,6 +37,7 @@ export function createEngine<Data>({
   items,
   zones,
   measure,
+  modifiers,
   setState,
   reset,
 }: EngineDeps<Data>) {
@@ -59,24 +67,43 @@ export function createEngine<Data>({
     let latestY = startY
     let frame: number | null = null
 
-    const overAt = (px: number, py: number): string | null => {
-      // Collision runs against the post-modifier Overlay rect, not the raw
-      // pointer (ADR-0007). The skeleton ships no modifiers, so the Overlay
-      // is the origin rect shifted by the raw pointer delta.
-      const overlayRect = translate(originRect, px - startX, py - startY)
+    // Run the modifier pipeline left-to-right, each modifier feeding the
+    // next, starting from the raw pointer delta (ADR-0007). The result is
+    // the Overlay transform — used for BOTH the published transform and the
+    // rect collision tests against, so Over always matches the visibly
+    // constrained Overlay. Window dims are read here and injected so the
+    // built-ins stay pure.
+    const resolveTransform = (px: number, py: number): Transform => {
+      const pointer = { x: px, y: py }
+      let transform: Transform = { x: px - startX, y: py - startY }
+      for (const modifier of modifiers) {
+        transform = modifier({
+          transform,
+          originRect,
+          pointer,
+          windowWidth: window.innerWidth,
+          windowHeight: window.innerHeight,
+        })
+      }
+      return transform
+    }
+
+    const overAt = (transform: Transform): string | null => {
+      const overlayRect = translate(originRect, transform.x, transform.y)
       return rectIntersection({ overlayRect, zones: zoneRects })
     }
 
     const publish = (px: number, py: number) => {
+      const transform = resolveTransform(px, py)
       setState({
         active: {
           id,
           data: item.dataRef.current,
           status: 'dragging',
           originRect,
-          transform: { x: px - startX, y: py - startY },
+          transform,
         },
-        over: overAt(px, py),
+        over: overAt(transform),
       })
     }
 
@@ -100,8 +127,9 @@ export function createEngine<Data>({
       if (frame !== null) cancelAnimationFrame(frame)
 
       // Resolve against the final pointer position, regardless of whether a
-      // throttled frame had a chance to fire.
-      const overId = overAt(e.clientX, e.clientY)
+      // throttled frame had a chance to fire. The same post-modifier
+      // transform that drives the Overlay drives this resolution.
+      const overId = overAt(resolveTransform(e.clientX, e.clientY))
       const dragged: DraggedItem<Data> = { id, data: item.dataRef.current }
 
       if (overId !== null) {

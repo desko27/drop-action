@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createDropAction } from '../main'
+import { createDropAction, restrictToVerticalAxis, snapToGrid } from '../main'
 import type { DraggedItem, Measure, Rect } from '../main'
 
 type Data = { label: string }
@@ -156,6 +156,68 @@ describe('createDropAction — public API behaviour', () => {
     // Releasing resolves the drop and tears the Overlay down.
     release(ZONE_CENTER)
     expect(screen.queryByTestId('overlay')).toBeNull()
+  })
+
+  test('a modifier drives the published transform AND collision (ADR-0007)', () => {
+    // restrictToVerticalAxis zeroes x. The Zone sits to the right (left:200),
+    // so an x-zeroed Overlay can never reach it — Over must be null and the
+    // drop must not fire, even though the pointer travels onto the Zone.
+    const DA = createDropAction<Data>('vertical', {
+      measure,
+      modifiers: [restrictToVerticalAxis],
+    })
+    const onDrop = vi.fn()
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move({ x: ZONE_CENTER.x, y: 80 })
+
+    // The published transform is post-modifier: x clamped to 0, y kept.
+    const overlay = screen.getByTestId('overlay').parentElement
+    expect(overlay?.style.transform).toBe('translate3d(0px, 30px, 0)')
+
+    release({ x: ZONE_CENTER.x, y: 80 })
+    // Over never matched the Zone, so no drop resolved.
+    expect(onDrop).not.toHaveBeenCalled()
+  })
+
+  test('snapToGrid rounds the published transform to the grid', () => {
+    const DA = createDropAction<Data>('grid', {
+      measure,
+      modifiers: [snapToGrid(50)],
+    })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    // Pointer delta (70, 30) snaps to the nearest multiples of 50 → (50, 50).
+    move({ x: ITEM_CENTER.x + 70, y: ITEM_CENTER.y + 30 })
+
+    const overlay = screen.getByTestId('overlay').parentElement
+    expect(overlay?.style.transform).toBe('translate3d(50px, 50px, 0)')
   })
 
   test('an Item and a Zone sharing an id do not collide', () => {

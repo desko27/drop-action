@@ -41,6 +41,30 @@ export type MeasureTarget = {
 }
 export type Measure = (target: MeasureTarget) => Rect
 
+// The Overlay's proposed displacement from the drag start, an `{ x, y }`
+// delta in viewport pixels (ADR-0007). Modifiers receive it and return a
+// possibly-adjusted delta.
+export type Transform = { x: number; y: number }
+
+// The context a Modifier reasons over. `transform` is the proposed delta
+// (the previous modifier's output, or the raw pointer delta for the
+// first); `originRect` is the source Item's rect at drag start. The
+// pointer position and window dims are injected by the engine so built-ins
+// stay pure and testable (no `window` reads inside a modifier).
+export type ModifierArgs = {
+  transform: Transform
+  originRect: Rect
+  pointer: { x: number; y: number }
+  windowWidth: number
+  windowHeight: number
+}
+
+// A composable transform adjuster (CONTEXT.md — Modifier). Modifiers run
+// left-to-right, each feeding the next; the final value drives both the
+// Overlay's CSS transform and the rect collision tests against (ADR-0007).
+export type Modifier = (args: ModifierArgs) => Transform
+
 export type CreateDropActionOptions = {
   measure?: Measure
+  modifiers?: Modifier[]
 }
