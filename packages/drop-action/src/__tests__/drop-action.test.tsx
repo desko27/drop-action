@@ -202,9 +202,9 @@ describe('createDropAction — public API behaviour', () => {
       'card:Card:dragging:0,0',
     )
 
+    // Releasing over a Zone enters the Dropping phase; the Reject resolves on
+    // the next microtask, tearing the Active state back down to idle.
     release(ZONE_CENTER)
-    // The Zone never responds → Reject, which resolves the Dropping phase on
-    // the next microtask before the Overlay clears (ADR-0003/#4).
     await flush()
     expect(screen.getByTestId('active')).toHaveTextContent('none')
   })
@@ -247,6 +247,8 @@ describe('createDropAction — public API behaviour', () => {
     const otherOver = screen.getByTestId('over-other').textContent === 'card'
     expect(slotOver !== otherOver).toBe(true)
 
+    // Releasing over a Zone enters the Dropping phase; once the Reject
+    // resolves on the next microtask no Zone is Over again.
     release(ZONE_CENTER)
     await flush()
     expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
@@ -274,6 +276,8 @@ describe('createDropAction — public API behaviour', () => {
     move(ZONE_CENTER)
     expect(item).toHaveAttribute('data-dragging')
 
+    // Releasing over a Zone enters the Dropping phase; the Item is no longer
+    // dragging once the Reject resolves on the next microtask.
     release(ZONE_CENTER)
     await flush()
     expect(item).not.toHaveAttribute('data-dragging')

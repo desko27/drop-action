@@ -27,6 +27,16 @@
         "default": "./dist/main.cjs"
       }
     },
+    "./snap-back": {
+      "import": {
+        "types": "./dist/snap-back.d.ts",
+        "default": "./dist/snap-back.js"
+      },
+      "require": {
+        "types": "./dist/snap-back.d.cts",
+        "default": "./dist/snap-back.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -42,6 +52,14 @@
     {
       "path": "dist/main.cjs",
       "limit": "2 KB"
+    },
+    {
+      "path": "dist/snap-back.js",
+      "limit": "1.5 KB"
+    },
+    {
+      "path": "dist/snap-back.cjs",
+      "limit": "1.5 KB"
     }
   ],
   "devDependencies": {
