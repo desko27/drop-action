@@ -53,7 +53,13 @@
     }
   },
   "files": {
-    "includes": ["**", "!package.json", "!**/dist", "!**/.tsbuild"]
+    "includes": [
+      "**",
+      "!package.json",
+      "!**/dist",
+      "!**/.tsbuild",
+      "!.changeset/pre.json"
+    ]
   },
   "overrides": [
     {
