@@ -1,23 +1,37 @@
 import {
   type CSSProperties,
+  type ElementType,
   type PointerEvent as ReactPointerEvent,
+  type ReactElement,
   type ReactNode,
+  type Ref,
+  Children,
+  cloneElement,
+  isValidElement,
   useCallback,
+  useEffect,
   useRef,
   useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { rectIntersection } from './collision'
+import { composeRefs } from './composeRefs'
 import { createEngine } from './engine'
 import { defaultMeasure } from './measure'
+import { restrictToWindowEdges } from './modifiers'
 import { createStore } from './store'
 import type {
   ActiveSnapshot,
+  DropListener,
   ItemRegistration,
   ZoneRegistration,
 } from './types.private'
 import type {
   CreateDropActionOptions,
   DraggedItem,
+  DragHandleProps,
+  ItemHandleProps,
+  UseItemOptions,
   ZoneDropHandler,
 } from './types.public'
 
@@ -36,21 +50,29 @@ const DRAGGING_HANDLE_STYLE: CSSProperties = {
   touchAction: 'none',
 }
 
-type UseItemOptions<Data> = {
-  onAccept?: (item: DraggedItem<Data>) => void
-}
+// Stable empty drop handler for a Zone rendered without an onDrop: its
+// Drops are handled remotely via `useDropEvent` (issue #9). Sharing one
+// reference keeps the subscription stable across renders.
+const noop = () => {}
 
 type ItemProps<Data> = {
   id: string
   data: Data
   onAccept?: (item: DraggedItem<Data>) => void
+  customDragHandle?: boolean
+  as?: ElementType
+  asChild?: boolean
   className?: string
   children?: ReactNode
 }
 
 type ZoneProps<Data> = {
   id: string
-  onDrop: ZoneDropHandler<Data>
+  // Optional now: a Drop on this Zone may instead be handled remotely
+  // through `useDropEvent(id, …)` (issue #9).
+  onDrop?: ZoneDropHandler<Data>
+  as?: ElementType
+  asChild?: boolean
   className?: string
   children?: ReactNode
 }
@@ -58,6 +80,49 @@ type ZoneProps<Data> = {
 type ActiveProps<Data> = {
   children: (item: DraggedItem<Data>) => ReactNode
   className?: string
+  // Overrides the portal target (Shadow DOM, a dialog). Defaults to
+  // `document.body` (ADR-0010).
+  container?: Element | DocumentFragment
+}
+
+// Merge the Drop Action's props onto a single existing child element via
+// cloneElement, adding NO wrapper node (ADR-0008). The child's own ref,
+// className and onPointerDown are preserved by composing with ours.
+function mergeAsChild(
+  children: ReactNode,
+  ref: Ref<HTMLElement>,
+  props: { className?: string } & Record<string, unknown>,
+): ReactElement {
+  const child = Children.only(children) as ReactElement<{
+    ref?: Ref<HTMLElement>
+    className?: string
+    onPointerDown?: (event: ReactPointerEvent) => void
+  }>
+  if (!isValidElement(child)) {
+    throw new Error('asChild expects a single React element child')
+  }
+
+  const childOnPointerDown = child.props.onPointerDown
+  const ourOnPointerDown = props.onPointerDown as
+    | ((event: ReactPointerEvent) => void)
+    | undefined
+
+  return cloneElement(child, {
+    ...props,
+    ref: composeRefs(child.props.ref, ref),
+    className: [child.props.className, props.className]
+      .filter(Boolean)
+      .join(' '),
+    // Both the child's existing handler and ours (if any) must fire.
+    ...(ourOnPointerDown
+      ? {
+          onPointerDown: (event: ReactPointerEvent) => {
+            childOnPointerDown?.(event)
+            ourOnPointerDown(event)
+          },
+        }
+      : {}),
+  })
 }
 
 // The factory: returns a namespace of peer components + hooks for one
@@ -69,18 +134,33 @@ export function createDropAction<Data = unknown>(
   options: CreateDropActionOptions = {},
 ) {
   const measure = options.measure ?? defaultMeasure
+  // Default to keeping the Overlay inside the viewport (ADR-0007). The
+  // pipeline drives both the Overlay transform and collision, so the
+  // default never lets Over register where the Overlay cannot reach.
+  const modifiers = options.modifiers ?? [restrictToWindowEdges]
+  // Default collision detection is `rectIntersection` (ADR-0006); a custom
+  // detector or another built-in can be supplied per Drop Action.
+  const collisionDetection = options.collisionDetection ?? rectIntersection
   const store = createStore<Data>()
 
   // Item ids and Zone ids occupy separate id spaces — two maps — so an
   // Item and a Zone may safely share an id (ADR-0005). These registries
   // are mutable and non-reactive: registering a node triggers no render.
   const items = new Map<string, ItemRegistration<Data>>()
-  const zones = new Map<string, ZoneRegistration<Data>>()
+  const zones = new Map<string, ZoneRegistration>()
+  // Drop handling is a subscription keyed by zoneId, kept separate from the
+  // geometry registry above so a Zone can be measured for collision even
+  // when its only drop handler lives remotely (issue #9). Many listeners
+  // may share a zoneId; a Drop fires them all.
+  const dropListeners = new Map<string, Set<DropListener<Data>>>()
 
   const engine = createEngine<Data>({
     items,
     zones,
+    dropListeners,
     measure,
+    modifiers,
+    collisionDetection,
     activationConstraint: options.activationConstraint,
     setState: store.setState,
     reset: store.reset,
@@ -99,6 +179,21 @@ export function createDropAction<Data = unknown>(
     return useDropActionState().active
   }
 
+  // The Active { id, data } while `zoneId` is the Over Zone, else null. At
+  // most one Zone is Over at a time (CONTEXT.md — Over), so this is truthy
+  // for exactly one Zone during a drag.
+  function useOver(zoneId: string): DraggedItem<Data> | null {
+    const { active, over } = useDropActionState()
+    if (!active || over !== zoneId) return null
+    return { id: active.id, data: active.data }
+  }
+
+  // The Item is always what is measured and travels. `dragHandleProps` is
+  // what the consumer spreads onto their element: by default it is a full
+  // drag handle (trigger + button a11y); with `customDragHandle` the Item
+  // is a container (`role: 'group'`) and the trigger moves to a
+  // `useDragHandle(id)` element, which may live outside the Item subtree
+  // (ADR-0009).
   function useItem(
     id: string,
     data: Data,
@@ -126,8 +221,36 @@ export function createDropAction<Data = unknown>(
 
     const isDragging = useDropActionState().active?.id === id
 
-    // Accessibility defaults baked into the handle (ADR-0011).
-    const dragHandleProps = {
+    // Accessibility defaults baked into the handle (ADR-0011). With a
+    // custom handle the Item itself never triggers, so it carries no
+    // onPointerDown and is a plain container.
+    const dragHandleProps: ItemHandleProps = itemOptions.customDragHandle
+      ? { role: 'group' }
+      : {
+          onPointerDown,
+          role: 'button',
+          tabIndex: 0,
+          'aria-roledescription': 'draggable',
+          // Only suppress touch scrolling once a drag is under way; pre-drag
+          // the handle keeps default touch-action so a swipe can scroll
+          // (ADR-0012).
+          style: isDragging ? DRAGGING_HANDLE_STYLE : HANDLE_STYLE,
+        }
+
+    return { ref, dragHandleProps, isDragging }
+  }
+
+  // A handle is just an element whose onPointerDown calls startDrag(id);
+  // no registry, it references the engine + id directly (ADR-0009). Place
+  // it anywhere — including outside the Item subtree — since startDrag
+  // measures the Item by its registered node, not the handle.
+  function useDragHandle(id: string): DragHandleProps {
+    const onPointerDown = useCallback(
+      (event: ReactPointerEvent) => engine.startDrag(id, event.nativeEvent),
+      [id],
+    )
+    const isDragging = useDropActionState().active?.id === id
+    return {
       onPointerDown,
       role: 'button',
       tabIndex: 0,
@@ -135,48 +258,111 @@ export function createDropAction<Data = unknown>(
       // Only suppress touch scrolling once a drag is under way; pre-drag the
       // handle keeps default touch-action so a swipe can scroll (ADR-0012).
       style: isDragging ? DRAGGING_HANDLE_STYLE : HANDLE_STYLE,
-    } as const
-
-    return { ref, dragHandleProps, isDragging }
+    }
   }
 
-  function useZone(id: string, zoneOptions: { onDrop: ZoneDropHandler<Data> }) {
-    const onDropRef = useRef(zoneOptions.onDrop)
-    onDropRef.current = zoneOptions.onDrop
+  // Subscribe to Drops on a Zone from anywhere in the tree (issue #9). The
+  // handler can live far from where the Zone is rendered; it receives the
+  // same `{ id, data }` and `respond` the Zone's onDrop would. A ref keeps
+  // the latest callback so re-renders never re-subscribe, and the
+  // subscription is added on mount / removed on unmount.
+  function useDropEvent(zoneId: string, handler: ZoneDropHandler<Data>) {
+    const handlerRef = useRef(handler)
+    handlerRef.current = handler
 
+    useEffect(() => {
+      let set = dropListeners.get(zoneId)
+      if (!set) {
+        set = new Set()
+        dropListeners.set(zoneId, set)
+      }
+      set.add(handlerRef)
+      return () => {
+        set.delete(handlerRef)
+        if (set.size === 0) dropListeners.delete(zoneId)
+      }
+    }, [zoneId])
+  }
+
+  // Register a Zone's node for measuring/collision, and wire its onDrop
+  // through the same listener mechanism as `useDropEvent`, so the Zone's
+  // onDrop is sugar over it (issue #9, ADR-0008). onDrop is optional now:
+  // a Zone with none is still measurable, its Drops handled remotely.
+  function useZone(
+    id: string,
+    zoneOptions: { onDrop?: ZoneDropHandler<Data> } = {},
+  ) {
     const ref = useCallback(
       (node: HTMLElement | null) => {
-        if (node) zones.set(id, { node, onDropRef })
+        if (node) zones.set(id, { node })
         else zones.delete(id)
       },
       [id],
     )
 
+    useDropEvent(id, zoneOptions.onDrop ?? noop)
+
     return { ref }
   }
 
-  // ----- Components (thin sugar that render a wrapper element) ----------
+  // ----- Components (thin sugar over the hooks — ADR-0008) --------------
+  // `as` picks the wrapper element/component (default 'div'); `asChild`
+  // merges ref + props onto a single existing child instead, adding no
+  // node.
 
-  function Item({ id, data, onAccept, className, children }: ItemProps<Data>) {
-    const { ref, dragHandleProps, isDragging } = useItem(id, data, { onAccept })
+  function Item({
+    id,
+    data,
+    onAccept,
+    customDragHandle,
+    as: As = 'div',
+    asChild,
+    className,
+    children,
+  }: ItemProps<Data>) {
+    const { ref, dragHandleProps, isDragging } = useItem(id, data, {
+      onAccept,
+      customDragHandle,
+    })
+
+    if (asChild) {
+      return mergeAsChild(children, ref, {
+        ...dragHandleProps,
+        className,
+        'data-dragging': isDragging || undefined,
+      })
+    }
+
     return (
-      <div
+      <As
         ref={ref}
         className={className}
         data-dragging={isDragging || undefined}
         {...dragHandleProps}
       >
         {children}
-      </div>
+      </As>
     )
   }
 
-  function Zone({ id, onDrop, className, children }: ZoneProps<Data>) {
+  function Zone({
+    id,
+    onDrop,
+    as: As = 'div',
+    asChild,
+    className,
+    children,
+  }: ZoneProps<Data>) {
     const { ref } = useZone(id, { onDrop })
+
+    if (asChild) {
+      return mergeAsChild(children, ref, { className })
+    }
+
     return (
-      <div ref={ref} className={className}>
+      <As ref={ref} className={className}>
         {children}
-      </div>
+      </As>
     )
   }
 
@@ -184,7 +370,7 @@ export function createDropAction<Data = unknown>(
   // translate3d that starts over the Item's origin rect and follows the
   // pointer (ADR-0010). On the server `useActive` is inert (null), so this
   // returns before any document access — SSR-safe.
-  function Active({ children, className }: ActiveProps<Data>) {
+  function Active({ children, className, container }: ActiveProps<Data>) {
     const active = useActive()
     if (!active) return null
 
@@ -204,9 +390,19 @@ export function createDropAction<Data = unknown>(
       >
         {children({ id: active.id, data: active.data })}
       </div>,
-      document.body,
+      container ?? document.body,
     )
   }
 
-  return { Item, Zone, Active, useItem, useZone, useActive }
+  return {
+    Item,
+    Zone,
+    Active,
+    useItem,
+    useZone,
+    useDragHandle,
+    useDropEvent,
+    useActive,
+    useOver,
+  }
 }
