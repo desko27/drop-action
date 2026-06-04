@@ -3,7 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
-      "drop-action": ["../../packages/drop-action/src/main.ts"]
+      "drop-action": ["../../packages/drop-action/src/main.ts"],
+      "drop-action/snap-back": ["../../packages/drop-action/src/snap-back.tsx"]
     }
   },
   "include": ["src"],
