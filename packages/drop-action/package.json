@@ -1,0 +1,75 @@
+{
+  "name": "drop-action",
+  "version": "0.0.0",
+  "description": "Zero-dependency, headless drag-and-drop primitives for React",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/desko27/drop-action.git"
+  },
+  "author": "Ismael Ramon <desko27@gmail.com> (https://desko.dev)",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "module": "./dist/main.js",
+  "main": "./dist/main.cjs",
+  "types": "./dist/main.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/main.d.ts",
+        "default": "./dist/main.js"
+      },
+      "require": {
+        "types": "./dist/main.d.cts",
+        "default": "./dist/main.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vite build",
+    "check:types": "tsc --noEmit",
+    "size": "size-limit"
+  },
+  "size-limit": [
+    {
+      "path": "dist/main.js",
+      "limit": "2 KB"
+    },
+    {
+      "path": "dist/main.cjs",
+      "limit": "2 KB"
+    }
+  ],
+  "devDependencies": {
+    "@microsoft/api-extractor": "^7.58.7",
+    "@size-limit/preset-small-lib": "^12.1.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "size-limit": "^12.1.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vite-plugin-dts": "^5.0.2"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
