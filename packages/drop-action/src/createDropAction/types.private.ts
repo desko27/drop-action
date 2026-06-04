@@ -34,7 +34,15 @@ export type ItemRegistration<Data> = {
   onAcceptRef: Ref<((item: DraggedItem<Data>) => void) | undefined>
 }
 
-export type ZoneRegistration<Data> = {
+// Geometry-only Zone registration. A Zone registers its node for measuring
+// and collision; how a Drop on it is handled is a separate subscription
+// (the drop-listener registry below — issue #9), so a Zone stays
+// measurable even when its only drop handler lives remotely via
+// `useDropEvent`.
+export type ZoneRegistration = {
   node: HTMLElement
-  onDropRef: Ref<ZoneDropHandler<Data>>
 }
+
+// A drop listener keeps a ref to the latest handler so a subscriber can
+// re-render without re-subscribing. Many listeners may share one zoneId.
+export type DropListener<Data> = Ref<ZoneDropHandler<Data>>

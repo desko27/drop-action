@@ -1,6 +1,7 @@
 import { rectIntersection } from './collision'
 import type {
   DropActionState,
+  DropListener,
   ItemRegistration,
   ZoneRegistration,
 } from './types.private'
@@ -8,7 +9,10 @@ import type { DraggedItem, Measure, Rect } from './types.public'
 
 type EngineDeps<Data> = {
   items: Map<string, ItemRegistration<Data>>
-  zones: Map<string, ZoneRegistration<Data>>
+  zones: Map<string, ZoneRegistration>
+  // Drop handlers subscribe per zoneId, independent of node registration
+  // (issue #9): a Drop fires every listener registered for the Over zone.
+  dropListeners: Map<string, Set<DropListener<Data>>>
   measure: Measure
   setState: (state: DropActionState<Data>) => void
   reset: () => void
@@ -29,6 +33,7 @@ const translate = (rect: Rect, x: number, y: number): Rect => ({
 export function createEngine<Data>({
   items,
   zones,
+  dropListeners,
   measure,
   setState,
   reset,
@@ -105,13 +110,26 @@ export function createEngine<Data>({
       const dragged: DraggedItem<Data> = { id, data: item.dataRef.current }
 
       if (overId !== null) {
-        const zone = zones.get(overId)
         // The Zone decides; the Item reacts (ADR-0003). respond('accepted')
         // is the only path that runs onAccept — never responding rejects.
+        // Accept is idempotent so that, with several listeners on one Over
+        // Zone, the first 'accepted' wins and later ones are no-ops.
+        let accepted = false
         const respond = (status: 'accepted') => {
-          if (status === 'accepted') item.onAcceptRef.current?.(dragged)
+          if (status === 'accepted' && !accepted) {
+            accepted = true
+            item.onAcceptRef.current?.(dragged)
+          }
         }
-        zone?.onDropRef.current(dragged, respond)
+        // Fire every handler registered for the Over zoneId — a Zone's own
+        // onDrop and any remote `useDropEvent` listeners alike (issue #9).
+        // Snapshot first so a handler that unsubscribes mid-Drop is safe.
+        const listeners = dropListeners.get(overId)
+        if (listeners) {
+          for (const listener of [...listeners]) {
+            listener.current(dragged, respond)
+          }
+        }
       }
 
       reset()
