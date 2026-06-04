@@ -1,5 +1,14 @@
 export { createDropAction } from './createDropAction'
-export { rectIntersection } from './createDropAction/collision'
+export {
+  closestCenter,
+  pointerWithin,
+  rectIntersection,
+} from './createDropAction/collision'
+export type {
+  CollisionArgs,
+  CollisionDetection,
+  ZoneRect,
+} from './createDropAction/collision'
 export type {
   CreateDropActionOptions,
   DraggedItem,

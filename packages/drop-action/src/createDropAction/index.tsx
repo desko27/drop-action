@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { rectIntersection } from './collision'
 import { createEngine } from './engine'
 import { defaultMeasure } from './measure'
 import { createStore } from './store'
@@ -59,6 +60,9 @@ export function createDropAction<Data = unknown>(
   options: CreateDropActionOptions = {},
 ) {
   const measure = options.measure ?? defaultMeasure
+  // Default collision detection is `rectIntersection` (ADR-0006); a custom
+  // detector or another built-in can be supplied per Drop Action.
+  const collisionDetection = options.collisionDetection ?? rectIntersection
   const store = createStore<Data>()
 
   // Item ids and Zone ids occupy separate id spaces — two maps — so an
@@ -71,6 +75,7 @@ export function createDropAction<Data = unknown>(
     items,
     zones,
     measure,
+    collisionDetection,
     setState: store.setState,
     reset: store.reset,
   })
