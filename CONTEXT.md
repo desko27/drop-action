@@ -128,7 +128,10 @@ _Avoid_: a11y module (bare), sensor.
 **Activation constraint**:
 The threshold — movement distance and/or press delay — a pointer press
 must cross before it becomes a drag, so clicks, taps and text selection
-inside an Item are not hijacked.
+inside an Item are not hijacked. Configured once per Drop Action (no
+per-Item override). Its default is pointer-type-aware: a small distance
+for mouse/pen, a delay plus tolerance for touch, so touch lists stay
+scrollable.
 _Avoid_: Threshold (bare), tolerance, sensor delay.
 
 ## Relationships
