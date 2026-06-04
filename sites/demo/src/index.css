@@ -51,6 +51,11 @@ body {
   cursor: grabbing;
 }
 
+/* The source Item dims while it is the one being dragged (isDragging). */
+.card[data-dragging] {
+  opacity: 0.4;
+}
+
 .zone {
   display: grid;
   place-items: center;
@@ -61,6 +66,15 @@ body {
   color: #94a3b8;
   text-align: center;
   padding: 0 0.5rem;
+}
+
+/* The Over Zone — at most one at a time — lights up while the Active Item
+   is judged to be over it. */
+.zone--over {
+  border-style: solid;
+  border-color: #6366f1;
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.12);
 }
 
 .zone--filled {

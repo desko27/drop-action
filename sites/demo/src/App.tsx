@@ -5,6 +5,25 @@ type CardData = { label: string }
 
 const DA = createDropAction<CardData>('demo')
 
+// The slot reads useOver to highlight itself while the Active Item is the
+// Over Zone — at most one Zone is Over at a time.
+function Slot({ dropped }: { dropped: boolean }) {
+  const over = DA.useOver('slot')
+  const className = ['zone', dropped && 'zone--filled', over && 'zone--over']
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <DA.Zone
+      id="slot"
+      onDrop={(_item, respond) => respond('accepted')}
+      className={className}
+    >
+      {dropped ? '✅ Card dropped here' : 'Drop here'}
+    </DA.Zone>
+  )
+}
+
 export function App() {
   const [dropped, setDropped] = useState(false)
 
@@ -17,6 +36,8 @@ export function App() {
         {dropped ? (
           <div className="card card--placeholder">Dropped ✓</div>
         ) : (
+          // The source Item dims via data-dragging (isDragging) while the
+          // Overlay travels.
           <DA.Item
             id="card"
             data={{ label: '📦 Card' }}
@@ -27,13 +48,7 @@ export function App() {
           </DA.Item>
         )}
 
-        <DA.Zone
-          id="slot"
-          onDrop={(_item, respond) => respond('accepted')}
-          className={dropped ? 'zone zone--filled' : 'zone'}
-        >
-          {dropped ? '✅ Card dropped here' : 'Drop here'}
-        </DA.Zone>
+        <Slot dropped={dropped} />
       </div>
 
       <DA.Active>
