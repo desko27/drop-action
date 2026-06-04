@@ -26,7 +26,7 @@ function Slot({ dropped }: { dropped: boolean }) {
   return (
     <DA.Zone
       id="slot"
-      onDrop={(_item, respond) => respond('accepted')}
+      onDrop={(_item, { accept }) => accept()}
       className={className}
     >
       {dropped ? '✅ Card dropped here' : 'Drop here'}

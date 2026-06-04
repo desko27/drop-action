@@ -9,7 +9,6 @@ import {
   cloneElement,
   isValidElement,
   useCallback,
-  useEffect,
   useRef,
   useSyncExternalStore,
 } from 'react'
@@ -22,7 +21,6 @@ import { restrictToWindowEdges } from './modifiers'
 import { createStore } from './store'
 import type {
   ActiveSnapshot,
-  DropListener,
   ItemRegistration,
   Resolution,
   ZoneRegistration,
@@ -51,15 +49,11 @@ const DRAGGING_HANDLE_STYLE: CSSProperties = {
   touchAction: 'none',
 }
 
-// Stable empty drop handler for a Zone rendered without an onDrop: its
-// Drops are handled remotely via `useDropEvent` (issue #9). Sharing one
-// reference keeps the subscription stable across renders.
-const noop = () => {}
-
-type ItemProps<Data> = {
+type ItemProps<Data, Accept = void, Reject = void> = {
   id: string
   data: Data
-  onAccept?: (item: DraggedItem<Data>) => void
+  onAccept?: (item: DraggedItem<Data>, payload: Accept) => void
+  onReject?: (item: DraggedItem<Data>, payload: Reject) => void
   customDragHandle?: boolean
   as?: ElementType
   asChild?: boolean
@@ -67,11 +61,11 @@ type ItemProps<Data> = {
   children?: ReactNode
 }
 
-type ZoneProps<Data> = {
+type ZoneProps<Data, Accept = void, Reject = void> = {
   id: string
-  // Optional now: a Drop on this Zone may instead be handled remotely
-  // through `useDropEvent(id, …)` (issue #9).
-  onDrop?: ZoneDropHandler<Data>
+  // 1 Zone = 1 onDrop (ADR-0014). Optional: a Zone with no handler is still
+  // measurable and simply Rejects any Drop.
+  onDrop?: ZoneDropHandler<Data, Accept, Reject>
   as?: ElementType
   asChild?: boolean
   className?: string
@@ -130,7 +124,7 @@ function mergeAsChild(
 // self-contained Drop Action (ADR-0005). `id` names the channel; the
 // store is closure-scoped, so only this Drop Action's Items and Zones see
 // each other.
-export function createDropAction<Data = unknown>(
+export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   _id: string,
   options: CreateDropActionOptions = {},
 ) {
@@ -146,19 +140,14 @@ export function createDropAction<Data = unknown>(
 
   // Item ids and Zone ids occupy separate id spaces — two maps — so an
   // Item and a Zone may safely share an id (ADR-0005). These registries
-  // are mutable and non-reactive: registering a node triggers no render.
-  const items = new Map<string, ItemRegistration<Data>>()
-  const zones = new Map<string, ZoneRegistration>()
-  // Drop handling is a subscription keyed by zoneId, kept separate from the
-  // geometry registry above so a Zone can be measured for collision even
-  // when its only drop handler lives remotely (issue #9). Many listeners
-  // may share a zoneId; a Drop fires them all.
-  const dropListeners = new Map<string, Set<DropListener<Data>>>()
+  // are mutable and non-reactive: registering a node triggers no render. A
+  // Zone carries its single onDrop with its node (ADR-0014).
+  const items = new Map<string, ItemRegistration<Data, Accept, Reject>>()
+  const zones = new Map<string, ZoneRegistration<Data, Accept, Reject>>()
 
-  const engine = createEngine<Data>({
+  const engine = createEngine<Data, Accept, Reject>({
     items,
     zones,
-    dropListeners,
     measure,
     modifiers,
     collisionDetection,
@@ -206,18 +195,20 @@ export function createDropAction<Data = unknown>(
   function useItem(
     id: string,
     data: Data,
-    itemOptions: UseItemOptions<Data> = {},
+    itemOptions: UseItemOptions<Data, Accept, Reject> = {},
   ) {
-    // Keep the registry pointed at the latest data/handler without
+    // Keep the registry pointed at the latest data/handlers without
     // re-registering the node on every render.
     const dataRef = useRef(data)
     dataRef.current = data
     const onAcceptRef = useRef(itemOptions.onAccept)
     onAcceptRef.current = itemOptions.onAccept
+    const onRejectRef = useRef(itemOptions.onReject)
+    onRejectRef.current = itemOptions.onReject
 
     const ref = useCallback(
       (node: HTMLElement | null) => {
-        if (node) items.set(id, { node, dataRef, onAcceptRef })
+        if (node) items.set(id, { node, dataRef, onAcceptRef, onRejectRef })
         else items.delete(id)
       },
       [id],
@@ -270,46 +261,24 @@ export function createDropAction<Data = unknown>(
     }
   }
 
-  // Subscribe to Drops on a Zone from anywhere in the tree (issue #9). The
-  // handler can live far from where the Zone is rendered; it receives the
-  // same `{ id, data }` and `respond` the Zone's onDrop would. A ref keeps
-  // the latest callback so re-renders never re-subscribe, and the
-  // subscription is added on mount / removed on unmount.
-  function useDropEvent(zoneId: string, handler: ZoneDropHandler<Data>) {
-    const handlerRef = useRef(handler)
-    handlerRef.current = handler
-
-    useEffect(() => {
-      let set = dropListeners.get(zoneId)
-      if (!set) {
-        set = new Set()
-        dropListeners.set(zoneId, set)
-      }
-      set.add(handlerRef)
-      return () => {
-        set.delete(handlerRef)
-        if (set.size === 0) dropListeners.delete(zoneId)
-      }
-    }, [zoneId])
-  }
-
-  // Register a Zone's node for measuring/collision, and wire its onDrop
-  // through the same listener mechanism as `useDropEvent`, so the Zone's
-  // onDrop is sugar over it (issue #9, ADR-0008). onDrop is optional now:
-  // a Zone with none is still measurable, its Drops handled remotely.
+  // Register a Zone's node for measuring/collision together with its single
+  // onDrop (ADR-0014: 1 Zone = 1 onDrop). A ref keeps the latest handler so
+  // re-renders never re-register the node. onDrop is optional: a Zone with
+  // none is still measurable and simply Rejects any Drop.
   function useZone(
     id: string,
-    zoneOptions: { onDrop?: ZoneDropHandler<Data> } = {},
+    zoneOptions: { onDrop?: ZoneDropHandler<Data, Accept, Reject> } = {},
   ) {
+    const onDropRef = useRef(zoneOptions.onDrop)
+    onDropRef.current = zoneOptions.onDrop
+
     const ref = useCallback(
       (node: HTMLElement | null) => {
-        if (node) zones.set(id, { node })
+        if (node) zones.set(id, { node, onDropRef })
         else zones.delete(id)
       },
       [id],
     )
-
-    useDropEvent(id, zoneOptions.onDrop ?? noop)
 
     return { ref }
   }
@@ -323,14 +292,16 @@ export function createDropAction<Data = unknown>(
     id,
     data,
     onAccept,
+    onReject,
     customDragHandle,
     as: As = 'div',
     asChild,
     className,
     children,
-  }: ItemProps<Data>) {
+  }: ItemProps<Data, Accept, Reject>) {
     const { ref, dragHandleProps, isDragging } = useItem(id, data, {
       onAccept,
+      onReject,
       customDragHandle,
     })
 
@@ -361,7 +332,7 @@ export function createDropAction<Data = unknown>(
     asChild,
     className,
     children,
-  }: ZoneProps<Data>) {
+  }: ZoneProps<Data, Accept, Reject>) {
     const { ref } = useZone(id, { onDrop })
 
     if (asChild) {
@@ -410,7 +381,6 @@ export function createDropAction<Data = unknown>(
     useItem,
     useZone,
     useDragHandle,
-    useDropEvent,
     useActive,
     useResolution,
     useOver,

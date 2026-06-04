@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createDropAction, restrictToVerticalAxis, snapToGrid } from '../main'
-import type { DraggedItem, Measure, Rect } from '../main'
+import type { DraggedItem, Measure, Rect, ZoneDropHandler } from '../main'
 
 type Data = { label: string }
 
@@ -90,16 +90,11 @@ describe('createDropAction — public API behaviour', () => {
     expect(dragged).toEqual({ id: 'card', data: { label: 'Card' } })
   })
 
-  test("respond('accepted') runs the Item's onAccept; not responding does not", () => {
+  test("accept() runs the Item's onAccept; not responding does not", () => {
     const DA = createDropAction<Data>('accept', { measure })
     const onAccept = vi.fn()
 
-    const dragOnto = (
-      onDrop: (
-        item: DraggedItem<Data>,
-        respond: (s: 'accepted') => void,
-      ) => void,
-    ) => {
+    const dragOnto = (onDrop: ZoneDropHandler<Data>) => {
       const view = render(
         <>
           <DA.Item id="card" data={{ label: 'Card' }} onAccept={onAccept}>
@@ -116,18 +111,128 @@ describe('createDropAction — public API behaviour', () => {
       view.unmount()
     }
 
-    dragOnto((_item, respond) => respond('accepted'))
+    dragOnto((_item, { accept }) => accept())
     expect(onAccept).toHaveBeenCalledTimes(1)
-    expect(onAccept).toHaveBeenCalledWith({
-      id: 'card',
-      data: { label: 'Card' },
-    })
+    expect(onAccept).toHaveBeenCalledWith(
+      { id: 'card', data: { label: 'Card' } },
+      undefined,
+    )
 
     onAccept.mockClear()
     dragOnto(() => {
       /* Zone never responds → Reject */
     })
     expect(onAccept).not.toHaveBeenCalled()
+  })
+
+  test("reject() runs the Item's onReject; a no-op Reject is inert", () => {
+    const DA = createDropAction<Data>('reject', { measure })
+    const onReject = vi.fn()
+
+    const dragOnto = (onDrop: ZoneDropHandler<Data>) => {
+      const view = render(
+        <>
+          <DA.Item id="card" data={{ label: 'Card' }} onReject={onReject}>
+            card
+          </DA.Item>
+          <DA.Zone id="slot" onDrop={onDrop}>
+            slot
+          </DA.Zone>
+        </>,
+      )
+      press(screen.getByRole('button'), ITEM_CENTER)
+      move(ZONE_CENTER)
+      release(ZONE_CENTER)
+      view.unmount()
+    }
+
+    // An explicit reject() — a guard clause — runs onReject (ADR-0014).
+    dragOnto((_item, { reject }) => reject())
+    expect(onReject).toHaveBeenCalledTimes(1)
+    expect(onReject).toHaveBeenCalledWith(
+      { id: 'card', data: { label: 'Card' } },
+      undefined,
+    )
+
+    // Never responding is still a Reject, but inert: no onReject (ADR-0003).
+    onReject.mockClear()
+    dragOnto(() => {})
+    expect(onReject).not.toHaveBeenCalled()
+  })
+
+  test('accept(payload) / reject(payload) carry the payload to onAccept / onReject', () => {
+    type Slot = { slot: number }
+    const DA = createDropAction<Data, Slot, string>('payloads', { measure })
+    const onAccept = vi.fn()
+    const onReject = vi.fn()
+
+    const dragOnto = (onDrop: ZoneDropHandler<Data, Slot, string>) => {
+      const view = render(
+        <>
+          <DA.Item
+            id="card"
+            data={{ label: 'Card' }}
+            onAccept={onAccept}
+            onReject={onReject}
+          >
+            card
+          </DA.Item>
+          <DA.Zone id="slot" onDrop={onDrop}>
+            slot
+          </DA.Zone>
+        </>,
+      )
+      press(screen.getByRole('button'), ITEM_CENTER)
+      move(ZONE_CENTER)
+      release(ZONE_CENTER)
+      view.unmount()
+    }
+
+    dragOnto((_item, { accept }) => accept({ slot: 3 }))
+    expect(onAccept).toHaveBeenCalledWith(
+      { id: 'card', data: { label: 'Card' } },
+      { slot: 3 },
+    )
+
+    dragOnto((_item, { reject }) => reject('not allowed'))
+    expect(onReject).toHaveBeenCalledWith(
+      { id: 'card', data: { label: 'Card' } },
+      'not allowed',
+    )
+  })
+
+  test('the first verdict wins: a reject() after accept() is ignored', () => {
+    const DA = createDropAction<Data>('first-wins', { measure })
+    const onAccept = vi.fn()
+    const onReject = vi.fn()
+    render(
+      <>
+        <DA.Item
+          id="card"
+          data={{ label: 'Card' }}
+          onAccept={onAccept}
+          onReject={onReject}
+        >
+          card
+        </DA.Item>
+        <DA.Zone
+          id="slot"
+          onDrop={(_item, { accept, reject }) => {
+            accept()
+            reject()
+          }}
+        >
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+
+    expect(onAccept).toHaveBeenCalledTimes(1)
+    expect(onReject).not.toHaveBeenCalled()
   })
 
   test('the Active Overlay renders in a document.body portal and follows the pointer', async () => {
@@ -376,81 +481,7 @@ describe('createDropAction — public API behaviour', () => {
     container.remove()
   })
 
-  test('useDropEvent fires for a remote listener with { id, data } and a working respond', () => {
-    const DA = createDropAction<Data>('remote', { measure })
-    const onDrop = vi.fn(
-      (_item: DraggedItem<Data>, respond: (s: 'accepted') => void) =>
-        respond('accepted'),
-    )
-    const onAccept = vi.fn()
-
-    // The Zone is rendered with NO onDrop; the handler lives in a separate
-    // component subscribing via useDropEvent — Drop handling far from the
-    // Zone (issue #9).
-    function RemoteListener() {
-      DA.useDropEvent('slot', onDrop)
-      return null
-    }
-
-    render(
-      <>
-        <DA.Item id="card" data={{ label: 'Card' }} onAccept={onAccept}>
-          card
-        </DA.Item>
-        <DA.Zone id="slot">slot</DA.Zone>
-        <RemoteListener />
-      </>,
-    )
-
-    press(screen.getByRole('button'), ITEM_CENTER)
-    move(ZONE_CENTER)
-    release(ZONE_CENTER)
-
-    expect(onDrop).toHaveBeenCalledTimes(1)
-    const [dragged] = onDrop.mock.calls[0]
-    expect(dragged).toEqual({ id: 'card', data: { label: 'Card' } })
-    // respond('accepted') from the remote listener runs the Item's onAccept.
-    expect(onAccept).toHaveBeenCalledTimes(1)
-    expect(onAccept).toHaveBeenCalledWith({
-      id: 'card',
-      data: { label: 'Card' },
-    })
-  })
-
-  test("Zone's onDrop is sugar over useDropEvent — both fire for one Drop", () => {
-    const DA = createDropAction<Data>('sugar', { measure })
-    const zoneOnDrop = vi.fn()
-    const remoteOnDrop = vi.fn()
-
-    function RemoteListener() {
-      DA.useDropEvent('slot', remoteOnDrop)
-      return null
-    }
-
-    render(
-      <>
-        <DA.Item id="card" data={{ label: 'Card' }}>
-          card
-        </DA.Item>
-        <DA.Zone id="slot" onDrop={zoneOnDrop}>
-          slot
-        </DA.Zone>
-        <RemoteListener />
-      </>,
-    )
-
-    press(screen.getByRole('button'), ITEM_CENTER)
-    move(ZONE_CENTER)
-    release(ZONE_CENTER)
-
-    // The Zone's own onDrop and the remote listener share one registry.
-    expect(zoneOnDrop).toHaveBeenCalledTimes(1)
-    expect(remoteOnDrop).toHaveBeenCalledTimes(1)
-    const [dragged] = zoneOnDrop.mock.calls[0] as [DraggedItem<Data>]
-    expect(dragged).toEqual({ id: 'card', data: { label: 'Card' } })
-  })
-
-  test('a Drop on one Zone does not fire a listener registered for another', () => {
+  test("a Drop fires only the Over Zone's onDrop, not another Zone's", () => {
     // Zone 'b' sits where the Item lands (ZONE_RECT); 'a' sits far away.
     const isolationMeasure: Measure = ({ id, type }) => {
       if (type === 'item') return ITEM_RECT
@@ -470,20 +501,17 @@ describe('createDropAction — public API behaviour', () => {
     const onA = vi.fn()
     const onB = vi.fn()
 
-    function Listeners() {
-      DA.useDropEvent('a', onA)
-      DA.useDropEvent('b', onB)
-      return null
-    }
-
     render(
       <>
         <DA.Item id="card" data={{ label: 'Card' }}>
           card
         </DA.Item>
-        <DA.Zone id="a">zone a</DA.Zone>
-        <DA.Zone id="b">zone b</DA.Zone>
-        <Listeners />
+        <DA.Zone id="a" onDrop={onA}>
+          zone a
+        </DA.Zone>
+        <DA.Zone id="b" onDrop={onB}>
+          zone b
+        </DA.Zone>
       </>,
     )
 
@@ -633,21 +661,18 @@ describe('createDropAction — public API behaviour', () => {
 })
 
 // Async resolution, the Dropping status, and cancellation (ADR-0003,
-// ADR-0004). A Drop may await before responding; only respond('accepted')
-// runs onAccept; Esc and pointercancel abort with no Drop at all.
+// ADR-0004). A Drop may await before deciding; only accept() runs onAccept;
+// Esc and pointercancel abort with no Drop at all.
 describe('createDropAction — async resolution, status, cancellation', () => {
-  test('a Zone that awaits before responding accepts after the delay', async () => {
+  test('a Zone that awaits before deciding accepts after the delay', async () => {
     const action = createDropAction<Data>('async-accept', { measure })
     const onAccept = vi.fn()
     let resolve: (() => void) | undefined
-    const onDrop = async (
-      _item: DraggedItem<Data>,
-      respond: (s: 'accepted') => void,
-    ) => {
+    const onDrop: ZoneDropHandler<Data> = async (_item, { accept }) => {
       await new Promise<void>((r) => {
         resolve = r
       })
-      respond('accepted')
+      accept()
     }
 
     render(
@@ -677,10 +702,10 @@ describe('createDropAction — async resolution, status, cancellation', () => {
     await flush()
 
     expect(onAccept).toHaveBeenCalledTimes(1)
-    expect(onAccept).toHaveBeenCalledWith({
-      id: 'card',
-      data: { label: 'Card' },
-    })
+    expect(onAccept).toHaveBeenCalledWith(
+      { id: 'card', data: { label: 'Card' } },
+      undefined,
+    )
     expect(screen.queryByTestId('overlay')).toBeNull()
   })
 
@@ -722,7 +747,7 @@ describe('createDropAction — async resolution, status, cancellation', () => {
     expect(screen.queryByTestId('overlay')).toBeNull()
   })
 
-  test('a synchronous respond("accepted") accepts within the release', async () => {
+  test('a synchronous accept() accepts within the release', async () => {
     const action = createDropAction<Data>('sync-accept', { measure })
     const onAccept = vi.fn()
 
@@ -731,7 +756,7 @@ describe('createDropAction — async resolution, status, cancellation', () => {
         <action.Item id="card" data={{ label: 'Card' }} onAccept={onAccept}>
           card
         </action.Item>
-        <action.Zone id="slot" onDrop={(_item, respond) => respond('accepted')}>
+        <action.Zone id="slot" onDrop={(_item, { accept }) => accept()}>
           slot
         </action.Zone>
       </>,

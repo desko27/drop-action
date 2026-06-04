@@ -61,12 +61,14 @@ The moment an Item is released over a Zone. Distinct from a Drop Action
 _Avoid_: Release, drop event (bare).
 
 **Accept / Reject**:
-The two outcomes of a Drop, decided by the Zone through `respond`.
-Accept is explicit and opt-in — the Zone must call `respond('accepted')`;
-anything else, including never responding, is a Reject. Resolution may be
-asynchronous: the Zone can await I/O before responding. A Reject requires a
-Drop — a release over a Zone; a drag that never reaches a Zone (No-drop,
-Cancel) is not a Reject.
+The two outcomes of a Drop, decided by the Zone. Accept is explicit and
+opt-in; not responding at all is still a Reject, so the no-op path stays
+inert. Reject may also be stated explicitly — a self-documenting decline —
+but an explicit Reject never overrides an Accept. Resolution may be
+asynchronous: the Zone can await I/O before deciding. Either outcome may
+carry a payload to the Item, which reacts via `onAccept` / `onReject`. A
+Reject requires a Drop — a release over a Zone; a drag that never reaches a
+Zone (No-drop, Cancel) is not a Reject.
 _Avoid_: Approve/deny, allow/block, success/failure.
 
 **No-drop**:
@@ -161,9 +163,10 @@ _Avoid_: Threshold (bare), tolerance, sensor delay.
 
 - A **Drop Action** contains **Items** and **Zones**; only those
   belonging to the same Drop Action see each other.
-- On a **Drop**, the **Zone** decides the outcome (**Accept** / **Reject**
-  via `respond`) and the accepted **Item** reacts (`onAccept`). The
-  decision lives on the Zone; the consequence lives on the Item.
+- On a **Drop**, the **Zone** decides the outcome (**Accept** / **Reject**)
+  and the **Item** reacts to that verdict via `onAccept` or `onReject`, each
+  optionally carrying a payload. The decision lives on the Zone; the
+  consequence lives on the Item.
 - A drag ends in one of four terminal outcomes: **Accept** and **Reject**
   (the two outcomes of a **Drop**), or **No-drop** and **Cancel** (endings
   with no Drop and no Zone). The three non-Accept outcomes form a
