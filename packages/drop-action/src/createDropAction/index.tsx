@@ -9,6 +9,7 @@ import {
   cloneElement,
   isValidElement,
   useCallback,
+  useEffect,
   useRef,
   useSyncExternalStore,
 } from 'react'
@@ -21,6 +22,7 @@ import { restrictToWindowEdges } from './modifiers'
 import { createStore } from './store'
 import type {
   ActiveSnapshot,
+  DropListener,
   ItemRegistration,
   ZoneRegistration,
 } from './types.private'
@@ -38,6 +40,11 @@ const HANDLE_STYLE: CSSProperties = {
   userSelect: 'none',
 }
 
+// Stable empty drop handler for a Zone rendered without an onDrop: its
+// Drops are handled remotely via `useDropEvent` (issue #9). Sharing one
+// reference keeps the subscription stable across renders.
+const noop = () => {}
+
 type ItemProps<Data> = {
   id: string
   data: Data
@@ -51,7 +58,9 @@ type ItemProps<Data> = {
 
 type ZoneProps<Data> = {
   id: string
-  onDrop: ZoneDropHandler<Data>
+  // Optional now: a Drop on this Zone may instead be handled remotely
+  // through `useDropEvent(id, …)` (issue #9).
+  onDrop?: ZoneDropHandler<Data>
   as?: ElementType
   asChild?: boolean
   className?: string
@@ -128,11 +137,17 @@ export function createDropAction<Data = unknown>(
   // Item and a Zone may safely share an id (ADR-0005). These registries
   // are mutable and non-reactive: registering a node triggers no render.
   const items = new Map<string, ItemRegistration<Data>>()
-  const zones = new Map<string, ZoneRegistration<Data>>()
+  const zones = new Map<string, ZoneRegistration>()
+  // Drop handling is a subscription keyed by zoneId, kept separate from the
+  // geometry registry above so a Zone can be measured for collision even
+  // when its only drop handler lives remotely (issue #9). Many listeners
+  // may share a zoneId; a Drop fires them all.
+  const dropListeners = new Map<string, Set<DropListener<Data>>>()
 
   const engine = createEngine<Data>({
     items,
     zones,
+    dropListeners,
     measure,
     modifiers,
     collisionDetection,
@@ -229,17 +244,46 @@ export function createDropAction<Data = unknown>(
     }
   }
 
-  function useZone(id: string, zoneOptions: { onDrop: ZoneDropHandler<Data> }) {
-    const onDropRef = useRef(zoneOptions.onDrop)
-    onDropRef.current = zoneOptions.onDrop
+  // Subscribe to Drops on a Zone from anywhere in the tree (issue #9). The
+  // handler can live far from where the Zone is rendered; it receives the
+  // same `{ id, data }` and `respond` the Zone's onDrop would. A ref keeps
+  // the latest callback so re-renders never re-subscribe, and the
+  // subscription is added on mount / removed on unmount.
+  function useDropEvent(zoneId: string, handler: ZoneDropHandler<Data>) {
+    const handlerRef = useRef(handler)
+    handlerRef.current = handler
 
+    useEffect(() => {
+      let set = dropListeners.get(zoneId)
+      if (!set) {
+        set = new Set()
+        dropListeners.set(zoneId, set)
+      }
+      set.add(handlerRef)
+      return () => {
+        set.delete(handlerRef)
+        if (set.size === 0) dropListeners.delete(zoneId)
+      }
+    }, [zoneId])
+  }
+
+  // Register a Zone's node for measuring/collision, and wire its onDrop
+  // through the same listener mechanism as `useDropEvent`, so the Zone's
+  // onDrop is sugar over it (issue #9, ADR-0008). onDrop is optional now:
+  // a Zone with none is still measurable, its Drops handled remotely.
+  function useZone(
+    id: string,
+    zoneOptions: { onDrop?: ZoneDropHandler<Data> } = {},
+  ) {
     const ref = useCallback(
       (node: HTMLElement | null) => {
-        if (node) zones.set(id, { node, onDropRef })
+        if (node) zones.set(id, { node })
         else zones.delete(id)
       },
       [id],
     )
+
+    useDropEvent(id, zoneOptions.onDrop ?? noop)
 
     return { ref }
   }
@@ -340,6 +384,7 @@ export function createDropAction<Data = unknown>(
     useItem,
     useZone,
     useDragHandle,
+    useDropEvent,
     useActive,
     useOver,
   }

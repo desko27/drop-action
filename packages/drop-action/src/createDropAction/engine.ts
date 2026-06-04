@@ -1,6 +1,7 @@
 import type { CollisionDetection } from './collision'
 import type {
   DropActionState,
+  DropListener,
   ItemRegistration,
   ZoneRegistration,
 } from './types.private'
@@ -15,7 +16,10 @@ import type {
 
 type EngineDeps<Data> = {
   items: Map<string, ItemRegistration<Data>>
-  zones: Map<string, ZoneRegistration<Data>>
+  zones: Map<string, ZoneRegistration>
+  // Drop handlers subscribe per zoneId, independent of node registration
+  // (issue #9): a Drop fires every listener registered for the Over zone.
+  dropListeners: Map<string, Set<DropListener<Data>>>
   measure: Measure
   modifiers: Modifier[]
   collisionDetection: CollisionDetection
@@ -38,6 +42,7 @@ const translate = (rect: Rect, x: number, y: number): Rect => ({
 export function createEngine<Data>({
   items,
   zones,
+  dropListeners,
   measure,
   modifiers,
   collisionDetection,
@@ -165,11 +170,10 @@ export function createEngine<Data>({
       // resolution (ADR-0004). Collision is frozen at the release position.
       publish(e.clientX, e.clientY, 'dropping')
 
-      const zone = zones.get(overId)
-
       // The Zone decides; the Item reacts (ADR-0003). respond('accepted') is
       // the only path that runs onAccept; anything else, including never
-      // responding, is a Reject. Resolution acts once (idempotent-safe).
+      // responding, is a Reject. Resolution acts once (idempotent-safe), so
+      // with several listeners on one Over Zone the first 'accepted' wins.
       let settled = false
       const finish = (accepted: boolean) => {
         if (settled) return
@@ -182,17 +186,18 @@ export function createEngine<Data>({
         if (status === 'accepted') finish(true)
       }
 
-      // onDrop may resolve synchronously, await before calling respond, or
-      // return a Promise. Await its settlement too: if the handler completes
-      // without an accept, that is a Reject — so the Overlay never sticks. A
-      // synchronous respond('accepted') has already settled by then, leaving
-      // the trailing reject a no-op.
-      const result = zone?.onDropRef.current(dragged, respond) as
-        | undefined
-        | PromiseLike<unknown>
-      Promise.resolve(result).then(
-        () => finish(false),
-        () => finish(false),
+      // Fire every handler registered for the Over zoneId — a Zone's own
+      // onDrop and any remote `useDropEvent` listeners alike (issue #9).
+      // Snapshot first so a handler that unsubscribes mid-Drop is safe. Each
+      // may respond synchronously, await before responding, or return a
+      // Promise; once all have settled without an accept, that is a Reject,
+      // so the Overlay never sticks.
+      const listeners = dropListeners.get(overId)
+      const results = listeners
+        ? [...listeners].map((listener) => listener.current(dragged, respond))
+        : []
+      Promise.allSettled(results.map((r) => Promise.resolve(r))).then(() =>
+        finish(false),
       )
     }
 
