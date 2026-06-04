@@ -4,12 +4,20 @@ import type {
   ItemRegistration,
   ZoneRegistration,
 } from './types.private'
-import type { DraggedItem, Measure, Rect, Respond } from './types.public'
+import type {
+  DraggedItem,
+  Measure,
+  Modifier,
+  Rect,
+  Respond,
+  Transform,
+} from './types.public'
 
 type EngineDeps<Data> = {
   items: Map<string, ItemRegistration<Data>>
   zones: Map<string, ZoneRegistration<Data>>
   measure: Measure
+  modifiers: Modifier[]
   collisionDetection: CollisionDetection
   setState: (state: DropActionState<Data>) => void
   reset: () => void
@@ -31,6 +39,7 @@ export function createEngine<Data>({
   items,
   zones,
   measure,
+  modifiers,
   collisionDetection,
   setState,
   reset,
@@ -61,42 +70,61 @@ export function createEngine<Data>({
     let latestY = startY
     let frame: number | null = null
 
-    const overAt = (px: number, py: number): string | null => {
-      // Collision runs against the post-modifier Overlay rect, not the raw
-      // pointer (ADR-0007). The skeleton ships no modifiers, so the Overlay
-      // is the origin rect shifted by the raw pointer delta. The configured
-      // detector also gets the live pointer (needed by `pointerWithin`).
-      const overlayRect = translate(originRect, px - startX, py - startY)
-      return collisionDetection({
+    // Run the modifier pipeline left-to-right, each modifier feeding the
+    // next, starting from the raw pointer delta (ADR-0007). The result is
+    // the Overlay transform — used for BOTH the published transform and the
+    // rect collision tests against, so Over always matches the visibly
+    // constrained Overlay. Window dims are read here and injected so the
+    // built-ins stay pure.
+    const resolveTransform = (px: number, py: number): Transform => {
+      const pointer = { x: px, y: py }
+      let transform: Transform = { x: px - startX, y: py - startY }
+      for (const modifier of modifiers) {
+        transform = modifier({
+          transform,
+          originRect,
+          pointer,
+          windowWidth: window.innerWidth,
+          windowHeight: window.innerHeight,
+        })
+      }
+      return transform
+    }
+
+    // Collision runs against the post-modifier Overlay rect, not the raw
+    // pointer (ADR-0007), so a constrained Overlay only registers Over where
+    // it can visually reach. The configured detector also gets the live
+    // pointer (needed by `pointerWithin`) — ADR-0006.
+    const overAt = (px: number, py: number, transform: Transform) =>
+      collisionDetection({
         pointer: { x: px, y: py },
-        overlayRect,
+        overlayRect: translate(originRect, transform.x, transform.y),
         zones: zoneRects,
       })
-    }
 
     const publish = (
       px: number,
       py: number,
       status: 'dragging' | 'dropping',
-      over: string | null,
     ) => {
+      const transform = resolveTransform(px, py)
       setState({
         active: {
           id,
           data: item.dataRef.current,
           status,
           originRect,
-          transform: { x: px - startX, y: py - startY },
+          transform,
         },
-        over,
+        over: overAt(px, py, transform),
       })
     }
 
-    publish(startX, startY, 'dragging', overAt(startX, startY))
+    publish(startX, startY, 'dragging')
 
     const flush = () => {
       frame = null
-      publish(latestX, latestY, 'dragging', overAt(latestX, latestY))
+      publish(latestX, latestY, 'dragging')
     }
 
     const onMove = (e: PointerEvent) => {
@@ -120,8 +148,10 @@ export function createEngine<Data>({
       cleanup()
 
       // Resolve against the final pointer position, regardless of whether a
-      // throttled frame had a chance to fire.
-      const overId = overAt(e.clientX, e.clientY)
+      // throttled frame had a chance to fire. The same post-modifier
+      // transform that drives the Overlay drives this resolution.
+      const transform = resolveTransform(e.clientX, e.clientY)
+      const overId = overAt(e.clientX, e.clientY, transform)
       const dragged: DraggedItem<Data> = { id, data: item.dataRef.current }
 
       // Released over nothing — an immediate Reject, no Dropping phase.
@@ -133,7 +163,7 @@ export function createEngine<Data>({
       // Enter the Dropping phase: the Overlay persists (status 'dropping',
       // origin rect and over kept) across the async gap between release and
       // resolution (ADR-0004). Collision is frozen at the release position.
-      publish(e.clientX, e.clientY, 'dropping', overId)
+      publish(e.clientX, e.clientY, 'dropping')
 
       const zone = zones.get(overId)
 

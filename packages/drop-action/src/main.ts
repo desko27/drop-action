@@ -9,6 +9,12 @@ export type {
   CollisionDetection,
   ZoneRect,
 } from './createDropAction/collision'
+export {
+  restrictToHorizontalAxis,
+  restrictToVerticalAxis,
+  restrictToWindowEdges,
+  snapToGrid,
+} from './createDropAction/modifiers'
 export type { ActiveSnapshot } from './createDropAction/types.private'
 export type {
   CreateDropActionOptions,
@@ -16,7 +22,10 @@ export type {
   DropStatus,
   Measure,
   MeasureTarget,
+  Modifier,
+  ModifierArgs,
   Rect,
   Respond,
+  Transform,
   ZoneDropHandler,
 } from './createDropAction/types.public'

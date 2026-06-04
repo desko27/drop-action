@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom'
 import { rectIntersection } from './collision'
 import { createEngine } from './engine'
 import { defaultMeasure } from './measure'
+import { restrictToWindowEdges } from './modifiers'
 import { createStore } from './store'
 import type {
   ActiveSnapshot,
@@ -63,6 +64,10 @@ export function createDropAction<Data = unknown>(
   options: CreateDropActionOptions = {},
 ) {
   const measure = options.measure ?? defaultMeasure
+  // Default to keeping the Overlay inside the viewport (ADR-0007). The
+  // pipeline drives both the Overlay transform and collision, so the
+  // default never lets Over register where the Overlay cannot reach.
+  const modifiers = options.modifiers ?? [restrictToWindowEdges]
   // Default collision detection is `rectIntersection` (ADR-0006); a custom
   // detector or another built-in can be supplied per Drop Action.
   const collisionDetection = options.collisionDetection ?? rectIntersection
@@ -78,6 +83,7 @@ export function createDropAction<Data = unknown>(
     items,
     zones,
     measure,
+    modifiers,
     collisionDetection,
     setState: store.setState,
     reset: store.reset,
