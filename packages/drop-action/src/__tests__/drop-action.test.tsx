@@ -168,7 +168,7 @@ describe('createDropAction — public API behaviour', () => {
     expect(screen.queryByTestId('overlay')).toBeNull()
   })
 
-  test('useActive reflects the Active Item (id, data, status, originRect) during a drag and is null otherwise', () => {
+  test('useActive reflects the Active Item (id, data, status, originRect) during a drag and is null otherwise', async () => {
     const DA = createDropAction<Data>('use-active', { measure })
     function Probe() {
       const active = DA.useActive()
@@ -202,11 +202,14 @@ describe('createDropAction — public API behaviour', () => {
       'card:Card:dragging:0,0',
     )
 
+    // Releasing over a Zone enters the Dropping phase; the Reject resolves on
+    // the next microtask, tearing the Active state back down to idle.
     release(ZONE_CENTER)
+    await flush()
     expect(screen.getByTestId('active')).toHaveTextContent('none')
   })
 
-  test('useOver is truthy only while the Active Item is Over that Zone, and at most one Zone is Over', () => {
+  test('useOver is truthy only while the Active Item is Over that Zone, and at most one Zone is Over', async () => {
     const DA = createDropAction<Data>('use-over', { measure })
     function Probe({ zoneId }: { zoneId: string }) {
       const over = DA.useOver(zoneId)
@@ -244,12 +247,15 @@ describe('createDropAction — public API behaviour', () => {
     const otherOver = screen.getByTestId('over-other').textContent === 'card'
     expect(slotOver !== otherOver).toBe(true)
 
+    // Releasing over a Zone enters the Dropping phase; once the Reject
+    // resolves on the next microtask no Zone is Over again.
     release(ZONE_CENTER)
+    await flush()
     expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
     expect(screen.getByTestId('over-other')).toHaveTextContent('none')
   })
 
-  test('useItem(...).isDragging is true for the dragged Item and false otherwise', () => {
+  test('useItem(...).isDragging is true for the dragged Item and false otherwise', async () => {
     const DA = createDropAction<Data>('is-dragging', { measure })
     render(
       <>
@@ -270,7 +276,10 @@ describe('createDropAction — public API behaviour', () => {
     move(ZONE_CENTER)
     expect(item).toHaveAttribute('data-dragging')
 
+    // Releasing over a Zone enters the Dropping phase; the Item is no longer
+    // dragging once the Reject resolves on the next microtask.
     release(ZONE_CENTER)
+    await flush()
     expect(item).not.toHaveAttribute('data-dragging')
   })
 
