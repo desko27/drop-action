@@ -16,8 +16,8 @@ export type Rect = {
   height: number
 }
 
-// The dragged Item as seen by a Zone's onDrop and the Item's onAccept: an
-// `id` paired with its typed `data` (CONTEXT.md — Item).
+// The dragged Item as seen by a Zone's onDrop and the Item's onAccept /
+// onReject: an `id` paired with its typed `data` (CONTEXT.md — Item).
 export type DraggedItem<Data = unknown> = {
   id: string
   data: Data
@@ -35,13 +35,22 @@ export type DropStatus = 'dragging' | 'dropping'
 // three non-'accepted' outcomes form a Return — what Snap-back animates.
 export type DropOutcome = 'accepted' | 'rejected' | 'no-drop' | 'cancelled'
 
-// Accept is explicit and opt-in: only `respond('accepted')` accepts;
-// anything else, including never responding, is a Reject (ADR-0003).
-export type Respond = (status: 'accepted') => void
+// The Zone's verdict on a Drop (ADR-0014). An object exposing the two
+// outcomes: `accept` / `reject` each settle the Drop once — the first call
+// wins — and carry an optional payload to the Item's `onAccept` / `onReject`.
+// Accept stays explicit and privileged (ADR-0003); calling neither —
+// including never responding — is still a Reject, but an inert one (no
+// `onReject` fires). `reject` is the self-documenting decline (e.g. a guard
+// clause). Payloads default to `void`, so `accept()` / `reject()` take no
+// argument unless a Drop Action types them.
+export type DropVerdict<Accept = void, Reject = void> = {
+  accept: (payload: Accept) => void
+  reject: (payload: Reject) => void
+}
 
-export type ZoneDropHandler<Data = unknown> = (
+export type ZoneDropHandler<Data = unknown, Accept = void, Reject = void> = (
   item: DraggedItem<Data>,
-  respond: Respond,
+  verdict: DropVerdict<Accept, Reject>,
 ) => void
 
 // The injectable boundary the engine reads Item/Zone geometry through, so
@@ -117,8 +126,9 @@ export type CreateDropActionOptions = {
 // grabbable area: the Item still registers (is measured and travels) but
 // its own spreadable props no longer trigger a drag — only a
 // `useDragHandle(id)` element does (ADR-0009).
-export type UseItemOptions<Data = unknown> = {
-  onAccept?: (item: DraggedItem<Data>) => void
+export type UseItemOptions<Data = unknown, Accept = void, Reject = void> = {
+  onAccept?: (item: DraggedItem<Data>, payload: Accept) => void
+  onReject?: (item: DraggedItem<Data>, payload: Reject) => void
   customDragHandle?: boolean
 }
 

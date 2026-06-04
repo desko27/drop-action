@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createDropAction } from '../main'
-import type { DraggedItem, Measure, Rect, Respond } from '../main'
+import type { DraggedItem, Measure, Rect, ZoneDropHandler } from '../main'
 import { createSnapBack } from '../snap-back'
 
 type Data = { label: string }
@@ -71,7 +71,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
       await new Promise<void>((r) => {
         resolveReject = r
       })
-      // No respond() -> Reject.
+      // No accept() / reject() -> an inert Reject.
     }
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
@@ -126,7 +126,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
         <DA.Item id="card" data={{ label: 'Card' }} onAccept={onAccept}>
           card
         </DA.Item>
-        <DA.Zone id="slot" onDrop={(_item, respond) => respond('accepted')}>
+        <DA.Zone id="slot" onDrop={(_item, { accept }) => accept()}>
           slot
         </DA.Zone>
         <SnapBack>
@@ -216,11 +216,11 @@ describe('drop-action/snap-back — every Return bounces', () => {
     // (which the old "saw a 'dropping' frame" inference bounced on), but the
     // outcome is 'accepted', so there is nothing to return.
     let resolveAccept: (() => void) | undefined
-    const acceptDrop = async (_item: DraggedItem<Data>, respond: Respond) => {
+    const acceptDrop: ZoneDropHandler<Data> = async (_item, { accept }) => {
       await new Promise<void>((r) => {
         resolveAccept = r
       })
-      respond('accepted')
+      accept()
     }
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,

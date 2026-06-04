@@ -12,7 +12,7 @@ Zero-dependency, headless drag-and-drop primitives for React.
 
 `drop-action` is a small, headless drag-and-drop toolkit for React. You call `createDropAction(id)` and get back a self-contained namespace of components and hooks (`Item`, `Zone`, `Active`, `useOver`, …) whose surface mirrors a dnd-kit-style API — but built on a custom Pointer Events engine with **no runtime dependencies** and **no Provider to wrap your tree in**.
 
-Headless means it ships behaviour, not looks: it tracks the drag, decides which zone is under the pointer, and tells you how a drop resolved — you render every pixel. Drops resolve through an explicit, optionally-async `respond('accepted')` contract, so a zone can `await` a network call before accepting.
+Headless means it ships behaviour, not looks: it tracks the drag, decides which zone is under the pointer, and tells you how a drop resolved — you render every pixel. Drops resolve through an explicit, optionally-async verdict — a zone calls `accept()` or `reject()` — so it can `await` a network call before deciding.
 
 ## Features
 
@@ -20,7 +20,7 @@ Headless means it ships behaviour, not looks: it tracks the drag, decides which 
 - **Tiny and tree-shakeable** — size-budgeted core (≤ 3.25 KB min+gzip); opt-in extras live behind subpaths so you only pay for what you import.
 - **No Provider** — `createDropAction(id)` closes over its own store; just render the components it returns ([ADR-0002](docs/adr/0002-closure-scoped-store-no-provider.md), [ADR-0005](docs/adr/0005-create-drop-action-returns-namespace.md)).
 - **Headless** — no styles, no DOM you didn't ask for. Hooks are the primitive; the components are thin sugar with `asChild` support ([ADR-0008](docs/adr/0008-hook-primitive-component-sugar-aschild.md)).
-- **Explicit, async-capable drops** — accept is opt-in (`respond('accepted')`); a zone may `await` before deciding ([ADR-0003](docs/adr/0003-async-drop-resolution-explicit-accept.md)).
+- **Explicit, async-capable drops** — a zone decides via `{ accept, reject }`; accept is opt-in (`accept()`), `reject()` is the self-documenting decline, and a zone may `await` before deciding ([ADR-0003](docs/adr/0003-async-drop-resolution-explicit-accept.md), [ADR-0014](docs/adr/0014-single-explicit-drop-verdict-per-zone.md)).
 - **Pointer Events engine** — one code path for mouse, pen and touch, with pointer-type-aware activation so taps, clicks and scrolls aren't hijacked ([ADR-0001](docs/adr/0001-pointer-events-drag-engine.md), [ADR-0012](docs/adr/0012-activation-constraint-per-action-pointer-aware.md)).
 - **Pluggable collision detection** — `rectIntersection` (default), `pointerWithin`, `closestCenter`, or your own.
 - **Composable modifiers** — `restrictToWindowEdges` (default), axis locks, `snapToGrid(size)`, or your own; the modifier pipeline drives both the overlay and collision ([ADR-0007](docs/adr/0007-modifiers-pipeline-drives-collision.md)).
@@ -61,13 +61,14 @@ function Board() {
         id="card-1"
         data={{ label: 'Drag me' }}
         onAccept={(item) => console.log('accepted', item.id)}
+        onReject={(item) => console.log('rejected', item.id)}
       >
         Drag me
       </DnD.Item>
 
-      {/* A zone decides each drop. Calling respond('accepted') accepts;
-          anything else (including never responding) is a reject. */}
-      <DnD.Zone id="inbox" onDrop={(item, respond) => respond('accepted')}>
+      {/* A zone decides each drop via { accept, reject }. Calling accept()
+          accepts; anything else (including never responding) is a reject. */}
+      <DnD.Zone id="inbox" onDrop={(item, { accept }) => accept()}>
         Drop here
       </DnD.Zone>
 
@@ -90,7 +91,7 @@ function Inbox() {
   return (
     <DnD.Zone
       id="inbox"
-      onDrop={(_item, respond) => respond('accepted')}
+      onDrop={(_item, { accept }) => accept()}
       className={over ? 'zone zone--over' : 'zone'}
     >
       Drop here
@@ -101,19 +102,22 @@ function Inbox() {
 
 ### Async accept / reject
 
-A zone can `await` before deciding. Returning without calling `respond('accepted')` is a reject:
+A zone decides through `{ accept, reject }`. It can `await` before deciding; `reject()` reads as an explicit decline (e.g. a guard clause), and returning without a verdict — including never responding — is still a reject:
 
 ```tsx
 <DnD.Zone
   id="inbox"
-  onDrop={async (item, respond) => {
+  onDrop={async (item, { accept, reject }) => {
     const ok = await saveOnServer(item.data)
-    if (ok) respond('accepted') // otherwise the drop rejects
+    if (ok) accept()
+    else reject() // explicit decline — or just return; a no-op is a reject too
   }}
 >
   Drop here
 </DnD.Zone>
 ```
+
+Each verdict can carry a payload to the item — `accept(payload)` / `reject(payload)` flow to the item's `onAccept` / `onReject`, typed via `createDropAction<Data, Accept, Reject>`.
 
 ### Snap-back (opt-in module)
 
@@ -158,17 +162,16 @@ const DnD = createDropAction<Card>('cards', {
 
 ## API
 
-`createDropAction<Data>(id, options?)` returns a namespace:
+`createDropAction<Data>(id, options?)` returns a namespace. Two optional generics — `createDropAction<Data, Accept, Reject>` — type the `accept` / `reject` payloads; both default to `void`.
 
 | Member | Kind | Purpose |
 |--------|------|---------|
-| `Item` | component | A draggable element carrying typed `data` (sugar over `useItem`). |
-| `Zone` | component | A droppable target (sugar over `useZone`). |
+| `Item` | component | A draggable element carrying typed `data` (sugar over `useItem`). Reacts to a drop verdict via `onAccept` / `onReject`. |
+| `Zone` | component | A droppable target deciding each drop through `onDrop(item, { accept, reject })` (sugar over `useZone`). |
 | `Active` | component | The overlay; renders the dragged item in flight via a portal. |
 | `useItem(id, data, opts?)` | hook | Register a draggable; returns `{ ref, dragHandleProps, isDragging }`. |
 | `useZone(id, opts?)` | hook | Register a droppable; returns `{ ref }`. |
 | `useDragHandle(id)` | hook | Props for a custom handle that can live outside the item's subtree. |
-| `useDropEvent(zoneId, handler)` | hook | Subscribe to a zone's drops from anywhere in the tree. |
 | `useActive()` | hook | The item currently in flight (`{ id, data, status, … }`) or `null`. |
 | `useOver(zoneId)` | hook | The dragged `{ id, data }` while `zoneId` is *over*, else `null`. |
 | `useResolution()` | hook | How the last drag ended (`accepted` / `rejected` / `no-drop` / `cancelled`), kept until the next drag. |

@@ -6,7 +6,6 @@ import {
 import type { CollisionDetection } from './collision'
 import type {
   DropActionState,
-  DropListener,
   ItemRegistration,
   ZoneRegistration,
 } from './types.private'
@@ -14,19 +13,18 @@ import type {
   ActivationConstraint,
   DraggedItem,
   DropOutcome,
+  DropVerdict,
   Measure,
   Modifier,
   Rect,
-  Respond,
   Transform,
 } from './types.public'
 
-type EngineDeps<Data> = {
-  items: Map<string, ItemRegistration<Data>>
-  zones: Map<string, ZoneRegistration>
-  // Drop handlers subscribe per zoneId, independent of node registration
-  // (issue #9): a Drop fires every listener registered for the Over zone.
-  dropListeners: Map<string, Set<DropListener<Data>>>
+type EngineDeps<Data, Accept, Reject> = {
+  items: Map<string, ItemRegistration<Data, Accept, Reject>>
+  // A Zone carries its single onDrop with its node (ADR-0014): a Drop fires
+  // the one handler registered for the Over Zone, if any.
+  zones: Map<string, ZoneRegistration<Data, Accept, Reject>>
   measure: Measure
   modifiers: Modifier[]
   collisionDetection: CollisionDetection
@@ -56,16 +54,15 @@ const translate = (rect: Rect, x: number, y: number): Rect => ({
 // `touch-action: none`, so a quick touch swipe is left to the browser to
 // scroll; `touch-action: none` is applied (in index.tsx, keyed off the
 // Active state) only once a drag is truly under way.
-export function createEngine<Data>({
+export function createEngine<Data, Accept, Reject>({
   items,
   zones,
-  dropListeners,
   measure,
   modifiers,
   collisionDetection,
   activationConstraint,
   setState,
-}: EngineDeps<Data>) {
+}: EngineDeps<Data, Accept, Reject>) {
   const constraint = resolveActivationConstraint(activationConstraint)
 
   const startDrag = (id: string, event: PointerEvent) => {
@@ -224,35 +221,36 @@ export function createEngine<Data>({
         // resolution (ADR-0004). Collision is frozen at the release position.
         publish(e.clientX, e.clientY, 'dropping')
 
-        // The Zone decides; the Item reacts (ADR-0003). respond('accepted')
-        // is the only path that runs onAccept; anything else, including never
-        // responding, is a Reject. Resolution acts once (idempotent-safe), so
-        // with several listeners on one Over Zone the first 'accepted' wins.
+        // 1 Zone = 1 onDrop (ADR-0014): a single handler decides; the Item
+        // reacts (ADR-0003). `accept` / `reject` each settle the Drop once —
+        // the first call wins — and run the Item's `onAccept` / `onReject`
+        // with their payload. A handler that finishes without a verdict,
+        // including one that never responds, is still a Reject, but an inert
+        // one: no `onReject` fires, so the no-op path stays inert (ADR-0003).
         let settled = false
-        const finish = (accepted: boolean) => {
+        const accept = (payload: Accept) => {
           if (settled) return
           settled = true
-          if (accepted) item.onAcceptRef.current?.(dragged)
-          resolve(accepted ? 'accepted' : 'rejected', transform)
+          item.onAcceptRef.current?.(dragged, payload)
+          resolve('accepted', transform)
         }
-
-        const respond: Respond = (status) => {
-          if (status === 'accepted') finish(true)
+        const reject = (payload: Reject) => {
+          if (settled) return
+          settled = true
+          item.onRejectRef.current?.(dragged, payload)
+          resolve('rejected', transform)
         }
+        const verdict: DropVerdict<Accept, Reject> = { accept, reject }
 
-        // Fire every handler registered for the Over zoneId — a Zone's own
-        // onDrop and any remote `useDropEvent` listeners alike (issue #9).
-        // Snapshot first so a handler that unsubscribes mid-Drop is safe. Each
-        // may respond synchronously, await before responding, or return a
-        // Promise; once all have settled without an accept, that is a Reject,
-        // so the Overlay never sticks.
-        const listeners = dropListeners.get(overId)
-        const results = listeners
-          ? [...listeners].map((listener) => listener.current(dragged, respond))
-          : []
-        Promise.allSettled(results.map((r) => Promise.resolve(r))).then(() =>
-          finish(false),
-        )
+        // The handler may decide synchronously, await before deciding, or
+        // return a Promise. Await it; if it settles no verdict, that is the
+        // inert Reject, so the Overlay never sticks.
+        const result = zones.get(overId)?.onDropRef.current?.(dragged, verdict)
+        Promise.resolve(result).then(() => {
+          if (settled) return
+          settled = true
+          resolve('rejected', transform)
+        })
       }
 
       // Esc or pointercancel abort an in-flight drag: a Cancel (CONTEXT.md).

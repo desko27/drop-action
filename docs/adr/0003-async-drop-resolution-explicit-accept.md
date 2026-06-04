@@ -1,5 +1,10 @@
 # Drop resolution is asynchronous, and Accept is explicit
 
+_Refined by ADR-0014: the verdict is now an `{ accept, reject }` object carrying
+an optional payload, Reject is also explicitly statable, and the Item reacts via
+`onAccept` / `onReject`. The async, explicit-Accept, no-op-is-Reject core below
+still holds._
+
 When an Item is dropped over a Zone, the Zone decides the outcome through
 a `respond` callback. We allow `respond` to be called asynchronously —
 the Zone may await I/O (e.g. a server check) before resolving — and we
