@@ -1,13 +1,20 @@
 import {
   type CSSProperties,
+  type ElementType,
   type PointerEvent as ReactPointerEvent,
+  type ReactElement,
   type ReactNode,
+  type Ref,
+  Children,
+  cloneElement,
+  isValidElement,
   useCallback,
   useRef,
   useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { rectIntersection } from './collision'
+import { composeRefs } from './composeRefs'
 import { createEngine } from './engine'
 import { defaultMeasure } from './measure'
 import { restrictToWindowEdges } from './modifiers'
@@ -20,6 +27,9 @@ import type {
 import type {
   CreateDropActionOptions,
   DraggedItem,
+  DragHandleProps,
+  ItemHandleProps,
+  UseItemOptions,
   ZoneDropHandler,
 } from './types.public'
 
@@ -28,14 +38,13 @@ const HANDLE_STYLE: CSSProperties = {
   userSelect: 'none',
 }
 
-type UseItemOptions<Data> = {
-  onAccept?: (item: DraggedItem<Data>) => void
-}
-
 type ItemProps<Data> = {
   id: string
   data: Data
   onAccept?: (item: DraggedItem<Data>) => void
+  customDragHandle?: boolean
+  as?: ElementType
+  asChild?: boolean
   className?: string
   children?: ReactNode
 }
@@ -43,6 +52,8 @@ type ItemProps<Data> = {
 type ZoneProps<Data> = {
   id: string
   onDrop: ZoneDropHandler<Data>
+  as?: ElementType
+  asChild?: boolean
   className?: string
   children?: ReactNode
 }
@@ -53,6 +64,46 @@ type ActiveProps<Data> = {
   // Overrides the portal target (Shadow DOM, a dialog). Defaults to
   // `document.body` (ADR-0010).
   container?: Element | DocumentFragment
+}
+
+// Merge the Drop Action's props onto a single existing child element via
+// cloneElement, adding NO wrapper node (ADR-0008). The child's own ref,
+// className and onPointerDown are preserved by composing with ours.
+function mergeAsChild(
+  children: ReactNode,
+  ref: Ref<HTMLElement>,
+  props: { className?: string } & Record<string, unknown>,
+): ReactElement {
+  const child = Children.only(children) as ReactElement<{
+    ref?: Ref<HTMLElement>
+    className?: string
+    onPointerDown?: (event: ReactPointerEvent) => void
+  }>
+  if (!isValidElement(child)) {
+    throw new Error('asChild expects a single React element child')
+  }
+
+  const childOnPointerDown = child.props.onPointerDown
+  const ourOnPointerDown = props.onPointerDown as
+    | ((event: ReactPointerEvent) => void)
+    | undefined
+
+  return cloneElement(child, {
+    ...props,
+    ref: composeRefs(child.props.ref, ref),
+    className: [child.props.className, props.className]
+      .filter(Boolean)
+      .join(' '),
+    // Both the child's existing handler and ours (if any) must fire.
+    ...(ourOnPointerDown
+      ? {
+          onPointerDown: (event: ReactPointerEvent) => {
+            childOnPointerDown?.(event)
+            ourOnPointerDown(event)
+          },
+        }
+      : {}),
+  })
 }
 
 // The factory: returns a namespace of peer components + hooks for one
@@ -111,6 +162,12 @@ export function createDropAction<Data = unknown>(
     return { id: active.id, data: active.data }
   }
 
+  // The Item is always what is measured and travels. `dragHandleProps` is
+  // what the consumer spreads onto their element: by default it is a full
+  // drag handle (trigger + button a11y); with `customDragHandle` the Item
+  // is a container (`role: 'group'`) and the trigger moves to a
+  // `useDragHandle(id)` element, which may live outside the Item subtree
+  // (ADR-0009).
   function useItem(
     id: string,
     data: Data,
@@ -138,16 +195,38 @@ export function createDropAction<Data = unknown>(
 
     const isDragging = useDropActionState().active?.id === id
 
-    // Accessibility defaults baked into the handle (ADR-0011).
-    const dragHandleProps = {
+    // Accessibility defaults baked into the handle (ADR-0011). With a
+    // custom handle the Item itself never triggers, so it carries no
+    // onPointerDown and is a plain container.
+    const dragHandleProps: ItemHandleProps = itemOptions.customDragHandle
+      ? { role: 'group' }
+      : {
+          onPointerDown,
+          role: 'button',
+          tabIndex: 0,
+          'aria-roledescription': 'draggable',
+          style: HANDLE_STYLE,
+        }
+
+    return { ref, dragHandleProps, isDragging }
+  }
+
+  // A handle is just an element whose onPointerDown calls startDrag(id);
+  // no registry, it references the engine + id directly (ADR-0009). Place
+  // it anywhere — including outside the Item subtree — since startDrag
+  // measures the Item by its registered node, not the handle.
+  function useDragHandle(id: string): DragHandleProps {
+    const onPointerDown = useCallback(
+      (event: ReactPointerEvent) => engine.startDrag(id, event.nativeEvent),
+      [id],
+    )
+    return {
       onPointerDown,
       role: 'button',
       tabIndex: 0,
       'aria-roledescription': 'draggable',
       style: HANDLE_STYLE,
-    } as const
-
-    return { ref, dragHandleProps, isDragging }
+    }
   }
 
   function useZone(id: string, zoneOptions: { onDrop: ZoneDropHandler<Data> }) {
@@ -165,28 +244,64 @@ export function createDropAction<Data = unknown>(
     return { ref }
   }
 
-  // ----- Components (thin sugar that render a wrapper element) ----------
+  // ----- Components (thin sugar over the hooks — ADR-0008) --------------
+  // `as` picks the wrapper element/component (default 'div'); `asChild`
+  // merges ref + props onto a single existing child instead, adding no
+  // node.
 
-  function Item({ id, data, onAccept, className, children }: ItemProps<Data>) {
-    const { ref, dragHandleProps, isDragging } = useItem(id, data, { onAccept })
+  function Item({
+    id,
+    data,
+    onAccept,
+    customDragHandle,
+    as: As = 'div',
+    asChild,
+    className,
+    children,
+  }: ItemProps<Data>) {
+    const { ref, dragHandleProps, isDragging } = useItem(id, data, {
+      onAccept,
+      customDragHandle,
+    })
+
+    if (asChild) {
+      return mergeAsChild(children, ref, {
+        ...dragHandleProps,
+        className,
+        'data-dragging': isDragging || undefined,
+      })
+    }
+
     return (
-      <div
+      <As
         ref={ref}
         className={className}
         data-dragging={isDragging || undefined}
         {...dragHandleProps}
       >
         {children}
-      </div>
+      </As>
     )
   }
 
-  function Zone({ id, onDrop, className, children }: ZoneProps<Data>) {
+  function Zone({
+    id,
+    onDrop,
+    as: As = 'div',
+    asChild,
+    className,
+    children,
+  }: ZoneProps<Data>) {
     const { ref } = useZone(id, { onDrop })
+
+    if (asChild) {
+      return mergeAsChild(children, ref, { className })
+    }
+
     return (
-      <div ref={ref} className={className}>
+      <As ref={ref} className={className}>
         {children}
-      </div>
+      </As>
     )
   }
 
@@ -218,5 +333,14 @@ export function createDropAction<Data = unknown>(
     )
   }
 
-  return { Item, Zone, Active, useItem, useZone, useActive, useOver }
+  return {
+    Item,
+    Zone,
+    Active,
+    useItem,
+    useZone,
+    useDragHandle,
+    useActive,
+    useOver,
+  }
 }

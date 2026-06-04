@@ -1,3 +1,4 @@
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 // Type-only import of the detector contract. collision.ts imports `Rect`
 // from here; this back-reference is types-only, so it erases at build time
 // and pulls in none of the built-in detectors (they stay tree-shakeable).
@@ -78,3 +79,33 @@ export type CreateDropActionOptions = {
   // `rectIntersection` in the factory.
   collisionDetection?: CollisionDetection
 }
+
+// Options for the `useItem` primitive. `customDragHandle` narrows the
+// grabbable area: the Item still registers (is measured and travels) but
+// its own spreadable props no longer trigger a drag — only a
+// `useDragHandle(id)` element does (ADR-0009).
+export type UseItemOptions<Data = unknown> = {
+  onAccept?: (item: DraggedItem<Data>) => void
+  customDragHandle?: boolean
+}
+
+// The accessibility + defensive-CSS surface shared by the default Item
+// handle and a custom `useDragHandle` (ADR-0011).
+export type DragHandleAria = {
+  role: 'button'
+  tabIndex: number
+  'aria-roledescription': 'draggable'
+  style: CSSProperties
+}
+
+// What `useDragHandle(id)` returns: a thin trigger that calls the engine
+// for the given Item id, with the same button a11y the default handle has.
+export type DragHandleProps = DragHandleAria & {
+  onPointerDown: (event: ReactPointerEvent) => void
+}
+
+// What `useItem` spreads onto the consumer's element. By default it is a
+// full drag handle (trigger + button a11y); with `customDragHandle` it is
+// just `role: 'group'` — the Item is a container and the trigger lives in
+// a `useDragHandle(id)` element elsewhere.
+export type ItemHandleProps = DragHandleProps | { role: 'group' }

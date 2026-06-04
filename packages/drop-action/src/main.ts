@@ -19,7 +19,10 @@ export type { ActiveSnapshot } from './createDropAction/types.private'
 export type {
   CreateDropActionOptions,
   DraggedItem,
+  DragHandleAria,
+  DragHandleProps,
   DropStatus,
+  ItemHandleProps,
   Measure,
   MeasureTarget,
   Modifier,
@@ -27,5 +30,6 @@ export type {
   Rect,
   Respond,
   Transform,
+  UseItemOptions,
   ZoneDropHandler,
 } from './createDropAction/types.public'
