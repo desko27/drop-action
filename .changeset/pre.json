@@ -6,6 +6,7 @@
   },
   "changesets": [
     "drop-verdict-accept-reject",
+    "remove-aschild",
     "return-resolution"
   ]
 }
