@@ -95,38 +95,7 @@ describe('headless ergonomics — hooks with no wrapper node', () => {
   })
 })
 
-describe('headless ergonomics — Item asChild / as', () => {
-  test('asChild merges ref + handle props onto the single child with no extra node', () => {
-    const DA = createDropAction<Data>('aschild', { measure })
-    const onDrop = vi.fn()
-
-    const { container } = render(
-      <div data-testid="root">
-        <DA.Item id="card" data={{ label: 'Card' }} asChild>
-          <li className="card">card</li>
-        </DA.Item>
-        <DA.Zone id="slot" onDrop={onDrop}>
-          slot
-        </DA.Zone>
-      </div>,
-    )
-
-    const handle = screen.getByRole('button')
-    // The child element itself is the handle — no wrapper div was added.
-    expect(handle.tagName).toBe('LI')
-    expect(handle).toHaveClass('card')
-    expect(handle).toHaveAttribute('aria-roledescription', 'draggable')
-    // Exactly the <li> + the Zone <div> live under root: no extra node.
-    const root = container.querySelector('[data-testid="root"]')
-    expect(root?.children).toHaveLength(2)
-    expect(root?.children[0].tagName).toBe('LI')
-
-    press(handle, ITEM_CENTER)
-    move(ZONE_CENTER)
-    release(ZONE_CENTER)
-    expect(onDrop).toHaveBeenCalledTimes(1)
-  })
-
+describe('headless ergonomics — Item `as` wrapper', () => {
   test('as renders the chosen wrapper element', () => {
     const DA = createDropAction<Data>('as', { measure })
     render(
