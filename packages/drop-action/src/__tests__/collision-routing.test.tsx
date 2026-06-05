@@ -80,7 +80,7 @@ const renderBoard = (DA: ReturnType<typeof createDropAction<Data>>) => {
 
 describe('createDropAction — multi-Zone collision routing', () => {
   test('with several Zones, the default detector routes the Drop to the one under the Overlay', () => {
-    const DA = createDropAction<Data>('multi', { measure })
+    const DA = createDropAction<Data>({ measure })
     const handlers = renderBoard(DA)
 
     // Steer the Overlay onto 'beta' (rect at left 400).
@@ -94,7 +94,7 @@ describe('createDropAction — multi-Zone collision routing', () => {
   })
 
   test('a built-in detector (pointerWithin) can be selected and is honoured', () => {
-    const DA = createDropAction<Data>('within', {
+    const DA = createDropAction<Data>({
       measure,
       collisionDetection: pointerWithin,
     })
@@ -112,7 +112,7 @@ describe('createDropAction — multi-Zone collision routing', () => {
   test('a custom detector (args) => zoneId | null is honoured', () => {
     // A detector that always selects 'alpha', regardless of geometry.
     const detector = vi.fn((_args: CollisionArgs) => 'alpha')
-    const DA = createDropAction<Data>('custom', {
+    const DA = createDropAction<Data>({
       measure,
       collisionDetection: detector,
     })
@@ -146,13 +146,13 @@ describe('createDropAction — multi-Zone collision routing', () => {
     }
 
     // Two independent Drop Actions, each with its own Zones, rendered together.
-    const A = createDropAction<Data>('action-a', {
+    const A = createDropAction<Data>({
       measure,
       collisionDetection: detector,
     })
     const otherMeasure: Measure = ({ type }) =>
       type === 'zone' ? rect(800, 0) : rect(0, 0)
-    const B = createDropAction<Data>('action-b', { measure: otherMeasure })
+    const B = createDropAction<Data>({ measure: otherMeasure })
 
     render(
       <>

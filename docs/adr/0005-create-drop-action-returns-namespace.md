@@ -13,7 +13,7 @@ status: superseded by ADR-0015
 A Drop Action surfaces three distinct peer components — `Zone`, `Item`,
 `Active` — plus hooks (`useOver`, `useActive`, `useResolution`,
 `useDragHandle`). So, unlike react-call's `createCallable` (which returns
-a single component carrying imperative statics), `createDropAction(id)`
+a single component carrying imperative statics), `createDropAction()`
 returns a plain namespace object. Zones are rendered as
 `<DA.Zone id="...">`, and many can coexist for one Drop Action.
 

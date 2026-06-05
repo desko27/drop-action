@@ -9,7 +9,7 @@ general programming concepts (and React primitives) are excluded.
 ### Participants
 
 **Drop Action**:
-The named drag-and-drop interaction returned by `createDropAction(id)` — a
+The drag-and-drop interaction returned by `createDropAction()` — a
 channel component that carries the peer components (`Zone`, `Item`,
 `Active`) and hooks as members (`DropAction.Zone`, `DropAction.useOver`, …).
 It *is* the channel, not any one Zone or Item, and is not rendered itself.

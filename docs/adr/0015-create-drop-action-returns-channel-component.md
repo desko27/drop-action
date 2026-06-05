@@ -7,7 +7,7 @@ unchanged from the plain-object namespace of ADR-0005. The carrier changed
 from object to component for one reason: React Fast Refresh only treats a
 module as a refresh boundary when every export is component-like
 (`isLikelyComponentType`). A plain-object export fails that check, so the
-common `export const DA = createDropAction(...)` module forces a **full page
+common `export const DA = createDropAction()` module forces a **full page
 reload** on every edit in Next.js / Fast Refresh setups; a component-shaped
 export makes the module a boundary, so editing it remounts the Drop Action
 subtree instead of reloading the page.
@@ -26,11 +26,11 @@ neutral channel component and not a promoted Zone/Item/Active.
 - **Promote a peer (Zone) to the primary**, dnd-kit / react-call style —
   rejected. A Drop Action is a *channel that contains many Zones*
   (CONTEXT.md), so making the channel *be* a Zone collapses the channel into
-  one of its contained parts and overloads the channel `id` with a `zoneId`;
-  a three-column board would render the channel symbol once per column. The
-  react-call analogy does not transfer: react-call has a single `Root`
-  component plus imperative methods, whereas a Drop Action surfaces three
-  peer components with no natural primary.
+  one of its contained parts: a three-column board would render the channel
+  symbol once per column, one per Zone. The react-call analogy does not
+  transfer: react-call has a single `Root` component plus imperative methods,
+  whereas a Drop Action surfaces three peer components with no natural
+  primary.
 
 ## Consequences
 

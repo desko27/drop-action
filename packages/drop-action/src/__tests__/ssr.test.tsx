@@ -8,7 +8,7 @@ import { createDropAction } from '../main'
 // nothing and never touches document.body.
 describe('SSR — inert server snapshot', () => {
   test('server rendering yields no active drag and no Overlay markup', () => {
-    const DA = createDropAction('ssr')
+    const DA = createDropAction()
     function Tree() {
       return (
         <>

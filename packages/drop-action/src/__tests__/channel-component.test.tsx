@@ -13,7 +13,7 @@ describe('createDropAction returns a channel component (ADR-0015)', () => {
   })
 
   test('returns a function carrying its members as statics', () => {
-    const DA = createDropAction('channel')
+    const DA = createDropAction()
 
     expect(typeof DA).toBe('function')
     // Uppercase name so react-refresh's isLikelyComponentType treats the
@@ -36,7 +36,7 @@ describe('createDropAction returns a channel component (ADR-0015)', () => {
 
   test('rendering the channel directly warns in dev and renders nothing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const DA = createDropAction('channel')
+    const DA = createDropAction()
 
     const { container } = render(<DA />)
 

@@ -10,7 +10,7 @@ Zero-dependency, headless drag-and-drop primitives for React.
 
 ## About
 
-`drop-action` is a small, headless drag-and-drop toolkit for React. You call `createDropAction(id)` and get back a self-contained namespace of components and hooks (`Item`, `Zone`, `Active`, `useOver`, …) whose surface mirrors a dnd-kit-style API — but built on a custom Pointer Events engine with **no runtime dependencies** and **no Provider to wrap your tree in**.
+`drop-action` is a small, headless drag-and-drop toolkit for React. You call `createDropAction()` and get back a self-contained namespace of components and hooks (`Item`, `Zone`, `Active`, `useOver`, …) whose surface mirrors a dnd-kit-style API — but built on a custom Pointer Events engine with **no runtime dependencies** and **no Provider to wrap your tree in**.
 
 Headless means it ships behaviour, not looks: it tracks the drag, decides which zone is under the pointer, and tells you how a drop resolved — you render every pixel. Drops resolve through an explicit, optionally-async verdict — a zone calls `accept()` or `reject()` — so it can `await` a network call before deciding.
 
@@ -18,8 +18,8 @@ Headless means it ships behaviour, not looks: it tracks the drag, decides which 
 
 - **Zero runtime dependencies** — only React itself (peer dep, `>=18`).
 - **Tiny and tree-shakeable** — size-budgeted core (≤ 3.25 KB min+gzip); opt-in extras live behind subpaths so you only pay for what you import.
-- **No Provider** — `createDropAction(id)` closes over its own store; just render the components it returns ([ADR-0002](docs/adr/0002-closure-scoped-store-no-provider.md)).
-- **Fast Refresh-friendly** — the factory returns a component, so a shared `export const DnD = createDropAction(...)` module hot-reloads with a scoped remount instead of a full page reload in Next.js / Vite ([ADR-0015](docs/adr/0015-create-drop-action-returns-channel-component.md)).
+- **No Provider** — `createDropAction()` closes over its own store; just render the components it returns ([ADR-0002](docs/adr/0002-closure-scoped-store-no-provider.md)).
+- **Fast Refresh-friendly** — the factory returns a component, so a shared `export const DnD = createDropAction()` module hot-reloads with a scoped remount instead of a full page reload in Next.js / Vite ([ADR-0015](docs/adr/0015-create-drop-action-returns-channel-component.md)).
 - **Headless** — no styles, no DOM you didn't ask for. Hooks are the primitive (spread `ref` + props onto your own `<tr>`/`<li>` for a zero-extra-node layout); the components are thin sugar with an `as` prop ([ADR-0008](docs/adr/0008-hook-primitive-component-sugar-aschild.md)).
 - **Explicit, async-capable drops** — a zone decides via `{ accept, reject }`; accept is opt-in (`accept()`), `reject()` is the self-documenting decline, and a zone may `await` before deciding ([ADR-0003](docs/adr/0003-async-drop-resolution-explicit-accept.md), [ADR-0014](docs/adr/0014-single-explicit-drop-verdict-per-zone.md)).
 - **Pointer Events engine** — one code path for mouse, pen and touch, with pointer-type-aware activation so taps, clicks and scrolls aren't hijacked ([ADR-0001](docs/adr/0001-pointer-events-drag-engine.md), [ADR-0012](docs/adr/0012-activation-constraint-per-action-pointer-aware.md)).
@@ -52,7 +52,7 @@ import { createDropAction } from 'drop-action'
 type Card = { label: string }
 
 // One self-contained drag-and-drop channel. No Provider needed.
-const DnD = createDropAction<Card>('cards')
+const DnD = createDropAction<Card>()
 
 function Board() {
   return (
@@ -139,12 +139,12 @@ const { SnapBack } = createSnapBack({
 
 ### Configuration
 
-Pass options as the second argument to `createDropAction`:
+Pass options to `createDropAction`:
 
 ```tsx
 import { createDropAction, closestCenter, snapToGrid } from 'drop-action'
 
-const DnD = createDropAction<Card>('cards', {
+const DnD = createDropAction<Card>({
   collisionDetection: closestCenter,
   modifiers: [snapToGrid(20)],
   activationConstraint: {
@@ -163,7 +163,7 @@ const DnD = createDropAction<Card>('cards', {
 
 ## API
 
-`createDropAction<Data>(id, options?)` returns the **Drop Action** — a channel component carrying the members below; reach for them with dot-notation (`DnD.Zone`, `DnD.useOver`, …) and don't render the Drop Action itself ([ADR-0015](docs/adr/0015-create-drop-action-returns-channel-component.md)). Two optional generics — `createDropAction<Data, Accept, Reject>` — type the `accept` / `reject` payloads; both default to `void`.
+`createDropAction<Data>(options?)` returns the **Drop Action** — a channel component carrying the members below; reach for them with dot-notation (`DnD.Zone`, `DnD.useOver`, …) and don't render the Drop Action itself ([ADR-0015](docs/adr/0015-create-drop-action-returns-channel-component.md)). Two optional generics — `createDropAction<Data, Accept, Reject>` — type the `accept` / `reject` payloads; both default to `void`.
 
 | Member | Kind | Purpose |
 |--------|------|---------|
