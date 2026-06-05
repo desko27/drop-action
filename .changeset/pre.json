@@ -5,6 +5,7 @@
     "drop-action": "0.1.0"
   },
   "changesets": [
+    "channel-component-return",
     "drop-verdict-accept-reject",
     "remove-aschild",
     "remove-create-drop-action-id",
