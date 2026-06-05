@@ -2,19 +2,13 @@ import {
   type CSSProperties,
   type ElementType,
   type PointerEvent as ReactPointerEvent,
-  type ReactElement,
   type ReactNode,
-  type Ref,
-  Children,
-  cloneElement,
-  isValidElement,
   useCallback,
   useRef,
   useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { rectIntersection } from './collision'
-import { composeRefs } from './composeRefs'
 import { createEngine } from './engine'
 import { defaultMeasure } from './measure'
 import { restrictToWindowEdges } from './modifiers'
@@ -56,7 +50,6 @@ type ItemProps<Data, Accept = void, Reject = void> = {
   onReject?: (item: DraggedItem<Data>, payload: Reject) => void
   customDragHandle?: boolean
   as?: ElementType
-  asChild?: boolean
   className?: string
   children?: ReactNode
 }
@@ -67,7 +60,6 @@ type ZoneProps<Data, Accept = void, Reject = void> = {
   // measurable and simply Rejects any Drop.
   onDrop?: ZoneDropHandler<Data, Accept, Reject>
   as?: ElementType
-  asChild?: boolean
   className?: string
   children?: ReactNode
 }
@@ -78,46 +70,6 @@ type ActiveProps<Data> = {
   // Overrides the portal target (Shadow DOM, a dialog). Defaults to
   // `document.body` (ADR-0010).
   container?: Element | DocumentFragment
-}
-
-// Merge the Drop Action's props onto a single existing child element via
-// cloneElement, adding NO wrapper node (ADR-0008). The child's own ref,
-// className and onPointerDown are preserved by composing with ours.
-function mergeAsChild(
-  children: ReactNode,
-  ref: Ref<HTMLElement>,
-  props: { className?: string } & Record<string, unknown>,
-): ReactElement {
-  const child = Children.only(children) as ReactElement<{
-    ref?: Ref<HTMLElement>
-    className?: string
-    onPointerDown?: (event: ReactPointerEvent) => void
-  }>
-  if (!isValidElement(child)) {
-    throw new Error('asChild expects a single React element child')
-  }
-
-  const childOnPointerDown = child.props.onPointerDown
-  const ourOnPointerDown = props.onPointerDown as
-    | ((event: ReactPointerEvent) => void)
-    | undefined
-
-  return cloneElement(child, {
-    ...props,
-    ref: composeRefs(child.props.ref, ref),
-    className: [child.props.className, props.className]
-      .filter(Boolean)
-      .join(' '),
-    // Both the child's existing handler and ours (if any) must fire.
-    ...(ourOnPointerDown
-      ? {
-          onPointerDown: (event: ReactPointerEvent) => {
-            childOnPointerDown?.(event)
-            ourOnPointerDown(event)
-          },
-        }
-      : {}),
-  })
 }
 
 // The factory: returns a namespace of peer components + hooks for one
@@ -284,9 +236,8 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   }
 
   // ----- Components (thin sugar over the hooks — ADR-0008) --------------
-  // `as` picks the wrapper element/component (default 'div'); `asChild`
-  // merges ref + props onto a single existing child instead, adding no
-  // node.
+  // `as` picks the wrapper element/component (default 'div'). For a
+  // zero-extra-node layout, use the hook directly instead (ADR-0008).
 
   function Item({
     id,
@@ -295,7 +246,6 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     onReject,
     customDragHandle,
     as: As = 'div',
-    asChild,
     className,
     children,
   }: ItemProps<Data, Accept, Reject>) {
@@ -304,14 +254,6 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
       onReject,
       customDragHandle,
     })
-
-    if (asChild) {
-      return mergeAsChild(children, ref, {
-        ...dragHandleProps,
-        className,
-        'data-dragging': isDragging || undefined,
-      })
-    }
 
     return (
       <As
@@ -329,15 +271,10 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     id,
     onDrop,
     as: As = 'div',
-    asChild,
     className,
     children,
   }: ZoneProps<Data, Accept, Reject>) {
     const { ref } = useZone(id, { onDrop })
-
-    if (asChild) {
-      return mergeAsChild(children, ref, { className })
-    }
 
     return (
       <As ref={ref} className={className}>

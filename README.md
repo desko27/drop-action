@@ -19,7 +19,7 @@ Headless means it ships behaviour, not looks: it tracks the drag, decides which 
 - **Zero runtime dependencies** — only React itself (peer dep, `>=18`).
 - **Tiny and tree-shakeable** — size-budgeted core (≤ 3.25 KB min+gzip); opt-in extras live behind subpaths so you only pay for what you import.
 - **No Provider** — `createDropAction(id)` closes over its own store; just render the components it returns ([ADR-0002](docs/adr/0002-closure-scoped-store-no-provider.md), [ADR-0005](docs/adr/0005-create-drop-action-returns-namespace.md)).
-- **Headless** — no styles, no DOM you didn't ask for. Hooks are the primitive; the components are thin sugar with `asChild` support ([ADR-0008](docs/adr/0008-hook-primitive-component-sugar-aschild.md)).
+- **Headless** — no styles, no DOM you didn't ask for. Hooks are the primitive (spread `ref` + props onto your own `<tr>`/`<li>` for a zero-extra-node layout); the components are thin sugar with an `as` prop ([ADR-0008](docs/adr/0008-hook-primitive-component-sugar-aschild.md)).
 - **Explicit, async-capable drops** — a zone decides via `{ accept, reject }`; accept is opt-in (`accept()`), `reject()` is the self-documenting decline, and a zone may `await` before deciding ([ADR-0003](docs/adr/0003-async-drop-resolution-explicit-accept.md), [ADR-0014](docs/adr/0014-single-explicit-drop-verdict-per-zone.md)).
 - **Pointer Events engine** — one code path for mouse, pen and touch, with pointer-type-aware activation so taps, clicks and scrolls aren't hijacked ([ADR-0001](docs/adr/0001-pointer-events-drag-engine.md), [ADR-0012](docs/adr/0012-activation-constraint-per-action-pointer-aware.md)).
 - **Pluggable collision detection** — `rectIntersection` (default), `pointerWithin`, `closestCenter`, or your own.
