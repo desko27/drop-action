@@ -1,4 +1,14 @@
+---
+status: superseded by ADR-0015
+---
+
 # createDropAction returns a namespace, not a component
+
+> **Superseded by [ADR-0015](0015-create-drop-action-returns-channel-component.md).**
+> The "no primary peer" finding below still holds — it is *why* the
+> replacement carrier is a neutral channel component rather than a promoted
+> Zone. Only the "plain object" mechanic is revised, to make the factory
+> module a React Fast Refresh boundary.
 
 A Drop Action surfaces three distinct peer components — `Zone`, `Item`,
 `Active` — plus hooks (`useOver`, `useActive`, `useResolution`,

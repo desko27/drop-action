@@ -9,11 +9,12 @@ general programming concepts (and React primitives) are excluded.
 ### Participants
 
 **Drop Action**:
-The named drag-and-drop interaction returned by `createDropAction(id)`,
-which yields a namespace of components (`Zone`, `Item`, `Active`) and
-hooks — not a component itself. One Drop Action is a self-contained
-channel: only its own Items and Zones see each other, so collision
-detection never leaks across Drop Actions.
+The named drag-and-drop interaction returned by `createDropAction(id)` — a
+channel component that carries the peer components (`Zone`, `Item`,
+`Active`) and hooks as members (`DropAction.Zone`, `DropAction.useOver`, …).
+It *is* the channel, not any one Zone or Item, and is not rendered itself.
+One Drop Action is self-contained: only its own Items and Zones see each
+other, so collision detection never leaks across Drop Actions.
 _Avoid_: Context, DnD context, board, instance.
 
 **Item**:
