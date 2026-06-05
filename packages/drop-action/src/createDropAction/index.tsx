@@ -72,10 +72,11 @@ type ActiveProps<Data> = {
   container?: Element | DocumentFragment
 }
 
-// The factory: returns a namespace of peer components + hooks for one
-// self-contained Drop Action (ADR-0005). The store is closure-scoped, so
-// only this Drop Action's Items and Zones see each other — isolation is
-// structural, so no channel id is needed (ADR-0002).
+// The factory: returns the Drop Action as a channel component carrying the
+// peer components (`Zone`, `Item`, `Active`) + hooks as members (ADR-0015).
+// The store is closure-scoped, so only this Drop Action's Items and Zones
+// see each other — isolation is structural, so no channel id is needed
+// (ADR-0002, ADR-0005).
 export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   options: CreateDropActionOptions = {},
 ) {
@@ -310,7 +311,25 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     )
   }
 
-  return {
+  // ----- The returned channel (ADR-0015) --------------------------------
+  // createDropAction returns THIS function, not a plain object, so that a
+  // module doing `export const DA = createDropAction(...)` is a valid React
+  // Fast Refresh boundary (an object export is not): editing that module
+  // remounts the Drop Action subtree instead of forcing a full page reload.
+  // The function IS the channel and is not meant to be rendered — the API is
+  // its members (DA.Zone, DA.Item, DA.Active, the hooks). There is no primary
+  // peer to render (ADR-0005), hence a neutral carrier rather than a promoted
+  // Zone.
+  function DropAction(): null {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        'createDropAction: render a member (e.g. .Zone / .Item / .Active), not the returned value itself.',
+      )
+    }
+    return null
+  }
+
+  return Object.assign(DropAction, {
     Item,
     Zone,
     Active,
@@ -320,5 +339,5 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     useActive,
     useResolution,
     useOver,
-  }
+  })
 }
