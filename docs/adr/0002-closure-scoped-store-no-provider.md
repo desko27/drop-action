@@ -1,5 +1,10 @@
 # Closure-scoped store, no provider
 
+_Refined by ADR-0018: the store no longer carries the per-frame Overlay
+`transform` (moved imperatively, out of React), and its reads are now
+referentially stable so a consumer re-renders only when its own slice changes.
+The closure-scoped, provider-less design below still holds._
+
 All shared drag state — the active Item, the current Zone, the registered
 Zone rects used for collision detection, and the drag-handle registry —
 lives in a store created inside the `createDropAction()` closure and is

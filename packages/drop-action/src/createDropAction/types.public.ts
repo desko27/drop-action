@@ -59,9 +59,18 @@ export type ZoneDropHandler<Data = unknown, Accept = void, Reject = void> = (
 export type MeasureTarget = {
   node: HTMLElement
   id: string
-  type: 'item' | 'zone'
+  // 'overlay' measures the rendered Active Overlay's own footprint, which can
+  // differ from the source Item's (ADR-0017); a measure that ignores `type`
+  // treats it like an Item.
+  type: 'item' | 'zone' | 'overlay'
 }
 export type Measure = (target: MeasureTarget) => Rect
+
+// The Activation guard (ADR-0016): an origin veto evaluated on the initial
+// pointerdown deciding whether a press may become a drag at all. `true` lets it
+// through. Configured per Drop Action via `createDropAction({ shouldStart })`;
+// the default is exported as `defaultShouldStart`.
+export type ShouldStart = (event: PointerEvent) => boolean
 
 // The three pointer kinds the activation constraint distinguishes. A raw
 // PointerEvent.pointerType is mapped onto these (unknown types → 'mouse').
@@ -114,6 +123,9 @@ export type CreateDropActionOptions = {
   // The pointer-type-aware threshold a press must cross to become a drag
   // (ADR-0012). Defaults are resolved per pointer kind in the engine.
   activationConstraint?: ActivationConstraint
+  // The Activation guard (ADR-0016): vetoes ineligible presses by origin/button
+  // before activation. Defaults to `defaultShouldStart` in the factory.
+  shouldStart?: ShouldStart
   // The modifier pipeline applied to the Overlay transform (ADR-0007).
   // Defaults to `[restrictToWindowEdges]` in the factory.
   modifiers?: Modifier[]
@@ -152,3 +164,12 @@ export type DragHandleProps = DragHandleAria & {
 // just `role: 'group'` — the Item is a container and the trigger lives in
 // a `useDragHandle(id)` element elsewhere.
 export type ItemHandleProps = DragHandleProps | { role: 'group' }
+
+// What `useOverlay` returns: the `ref` to put on the Overlay element (the
+// engine measures it for collision and moves it imperatively each frame —
+// ADR-0017, ADR-0018) and the base `style` that fixes + layers it. The
+// transform is written imperatively, so it is deliberately not in `style`.
+export type OverlayProps = {
+  ref: (node: HTMLElement | null) => void
+  style: CSSProperties
+}

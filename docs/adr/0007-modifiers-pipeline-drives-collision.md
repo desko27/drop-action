@@ -1,5 +1,11 @@
 # Modifiers are a composable transform pipeline that also drives collision
 
+_Refined by ADR-0017: the "post-modifier Overlay rect" collision tests against is
+now the **measured** Overlay's footprint anchored at origin + transform, not the
+source Item's rect translated (which only matched while Overlay and source were
+the same size). The principle below — Over matches what the user sees travel —
+is what that refinement upholds._
+
 Modifiers are composable functions `(args) => Transform`, where Transform
 is an `{ x, y }` delta from the drag start. The array is applied
 left-to-right — each modifier's output feeds the next — and the final

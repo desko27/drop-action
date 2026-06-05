@@ -12,15 +12,14 @@ import type {
 // re-registering on every render.
 export type Ref<T> = { current: T }
 
-// The travelling Item, plus the geometry the Overlay needs to position
-// itself: where the source Item started (`originRect`) and how far the
-// pointer has moved since (`transform`).
+// The travelling Item, plus the source's origin rect. The per-frame Overlay
+// transform is NOT here: the Overlay is moved imperatively (ADR-0018), so the
+// transform lives only in the engine and never re-renders consumers each frame.
 export type ActiveSnapshot<Data> = {
   id: string
   data: Data
   status: DropStatus
   originRect: Rect
-  transform: { x: number; y: number }
 }
 
 // The terminal snapshot the core publishes the instant a drag ends
@@ -36,14 +35,13 @@ export type Resolution<Data> = {
   item: DraggedItem<Data>
 }
 
-// The whole reactive snapshot read through useSyncExternalStore. `null`
-// active means no drag is in flight — the inert state the server yields.
-// `resolution` carries how the last drag ended; it persists between drags
-// so a consumer that renders after a drag can still read the outcome.
-export type DropActionState<Data> = {
-  active: ActiveSnapshot<Data> | null
-  over: string | null
-  resolution: Resolution<Data> | null
+// The shared handle on the rendered Overlay node (ADR-0017, ADR-0018). The
+// `useOverlay` ref sets `node`; the engine sets `place` for the duration of a
+// drag so it (and a late-mounting node, via the ref) can position the Overlay
+// imperatively. `place` is null between drags.
+export type OverlayRegistry = {
+  node: HTMLElement | null
+  place: ((node: HTMLElement) => void) | null
 }
 
 export type ItemRegistration<Data, Accept = void, Reject = void> = {

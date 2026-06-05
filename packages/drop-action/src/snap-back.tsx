@@ -10,19 +10,21 @@ import type {
   ActiveSnapshot,
   DraggedItem,
   DropOutcome,
+  OverlayProps,
   Resolution,
 } from './main'
 
 // drop-action/snap-back — the opt-in Return animation (CONTEXT.md —
 // Snap-back). It is the first subpath module: tree-shakeable, built ONLY on
-// the public reactive reads the core exposes — `useActive` for the live
-// drag, `useResolution` for how it ended. It imports nothing from the
-// headless core's internals, so a consumer who never imports
-// `drop-action/snap-back` pulls none of it.
+// the public surface the core exposes — `useActive` for the live drag,
+// `useResolution` for how it ended, and `useOverlay` so the live ghost rides
+// the engine's imperative Overlay movement (ADR-0018) exactly like `<Active>`.
+// It imports nothing from the headless core's internals, so a consumer who
+// never imports `drop-action/snap-back` pulls none of it.
 //
-// Why a factory. The public reactive reads are per-Drop-Action — `useActive`
-// and `useResolution` are returned by `createDropAction`. Snap-back is
-// generic across Drop Actions, so it takes those reads and closes over them,
+// Why a factory. Those reads are per-Drop-Action — `useActive`,
+// `useResolution`, `useOverlay` are returned by `createDropAction`. Snap-back
+// is generic across Drop Actions, so it takes them and closes over them,
 // mirroring how the core's namespace is produced (ADR-0005).
 //
 // How the bounce works. The core states the terminal outcome directly
@@ -46,17 +48,21 @@ export type SnapBackOptions = {
   easing?: string
 }
 
-// The reactive reads Snap-back is built on, both returned by the Drop
-// Action's `createDropAction`. Pass the Drop Action's own hooks, e.g.
-// `createSnapBack({ useActive: DA.useActive, useResolution: DA.useResolution })`.
+// The reactive reads Snap-back is built on, all returned by the Drop Action's
+// `createDropAction`. Pass the Drop Action's own hooks, e.g.
+// `createSnapBack({ useActive: DA.useActive, useResolution: DA.useResolution,
+// useOverlay: DA.useOverlay })`. `useOverlay` lets the live-drag ghost ride the
+// engine's imperative Overlay movement (ADR-0018), the same as `<Active>`.
 export type SnapBackReads<Data> = {
   useActive: () => ActiveSnapshot<Data> | null
   useResolution: () => Resolution<Data> | null
+  useOverlay: () => OverlayProps
 }
 
-// The headless result the `useSnapBack` hook returns. `style.transform` is
-// the live Overlay translate (origin rect + delta); `style.transition` is
-// empty while dragging and set during the bounce.
+// The headless result the `useSnapBack` hook returns. While a drag is live the
+// engine moves the Overlay imperatively (ADR-0018), so `ref` is the Overlay ref
+// to spread and `style` is the base; during the bounce `ref` is undefined and
+// `style.transform` eases to the origin under `style.transition`.
 export type SnapBackState<Data> = {
   // The Active snapshot while a drag is live, else null. During a bounce
   // this is null (the drag already ended) but `snapping` is true.
@@ -70,16 +76,20 @@ export type SnapBackState<Data> = {
   // else null. Exposed so a consumer can vary treatment per outcome (e.g.
   // skip the bounce on 'cancelled'); the <SnapBack> sugar treats them alike.
   outcome: DropOutcome | null
-  // The Overlay style: absolute translate plus the bounce transition. Spread
-  // onto the Overlay element so it follows the pointer, then eases to origin.
+  // The Overlay style. While dragging it is the base style and the engine
+  // writes the transform on the node; during the bounce it carries the
+  // translate plus transition that eases the ghost back to origin.
   style: CSSProperties
+  // The Overlay ref to spread while a drag is live (the engine moves the node);
+  // undefined during the bounce, when this hook drives the transform via style.
+  ref?: (node: HTMLElement | null) => void
 }
 
 // Build a snap-back helper bound to one Drop Action. Pass the Drop Action's
 // reactive reads, so the helper is reusable across Drop Actions while
 // touching only public state.
 export function createSnapBack<Data>(
-  { useActive, useResolution }: SnapBackReads<Data>,
+  { useActive, useResolution, useOverlay }: SnapBackReads<Data>,
   options: SnapBackOptions = {},
 ) {
   const durationMs = options.durationMs ?? DEFAULT_DURATION_MS
@@ -88,6 +98,7 @@ export function createSnapBack<Data>(
   function useSnapBack(): SnapBackState<Data> {
     const active = useActive()
     const resolution = useResolution()
+    const overlay = useOverlay()
 
     // The Return currently being animated, captured the instant a non-accept
     // resolution appears and held through the bounce. Read off `resolution`
@@ -143,16 +154,16 @@ export function createSnapBack<Data>(
       return () => clearTimeout(id)
     }, [phase])
 
-    // Live drag: follow the pointer with no transition.
+    // Live drag: the engine moves the Overlay node imperatively (ADR-0018), so
+    // we hand back its ref + base style and never compute the transform here.
     if (active) {
-      const x = active.originRect.left + active.transform.x
-      const y = active.originRect.top + active.transform.y
       return {
         active,
         snapping: false,
         item: { id: active.id, data: active.data },
         outcome: null,
-        style: overlayStyle(x, y, ''),
+        style: overlay.style,
+        ref: overlay.ref,
       }
     }
 
@@ -204,11 +215,18 @@ export function createSnapBack<Data>(
   // uniformly on every Return. To vary treatment per outcome, read `outcome`
   // from `useSnapBack()` and render the ghost yourself.
   function SnapBack({ children, className, container }: SnapBackProps) {
-    const { item, style } = useSnapBack()
+    const { item, style, ref, snapping } = useSnapBack()
     if (!item) return null
 
     return createPortal(
-      <div className={className} style={style}>
+      // `data-snapping` marks the Return bounce so a test/E2E can tell a
+      // snap-back-in-progress from a live drag (mirrors `<Item data-dragging>`).
+      <div
+        ref={ref}
+        className={className}
+        style={style}
+        data-snapping={snapping || undefined}
+      >
         {children(item)}
       </div>,
       container ?? document.body,

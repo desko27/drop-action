@@ -1,5 +1,10 @@
 # Overlay: portalled to body, fixed + translate3d, source Item untouched
 
+_Refined by ADR-0018: the `translate3d` below is now written imperatively by the
+engine each frame (via the `useOverlay()` primitive's `ref`), not through a
+React render, so the Overlay subtree no longer re-renders per frame. The portal,
+fixed + translate3d, and untouched-source decisions still hold._
+
 Three decisions about how the Overlay renders:
 
 - **Portal.** The Overlay portals to `document.body` by default (a

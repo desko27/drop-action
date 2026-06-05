@@ -1,5 +1,10 @@
 # Collision detection: single-winner contract, rects snapshotted at drag start
 
+_The snapshot-at-drag-start default is superseded by ADR-0017: Zone rects are
+now re-measured on scroll/resize during the drag (the "opt-in measuring
+strategy" foreseen in Consequences became always-on core behaviour). The
+single-winner contract and `rectIntersection` default below still hold._
+
 Collision detection is a pluggable function
 `(args: { pointer, overlayRect, zones }) => zoneId | null` that returns a
 single winning Zone, not dnd-kit's ordered `Collision[]` — because Over

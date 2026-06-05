@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   DEFAULT_ACTIVATION_CONSTRAINT,
+  defaultShouldStart,
   evaluateActivation,
   pointerKindOf,
   resolveActivationConstraint,
@@ -158,5 +159,52 @@ describe('pointerKindOf', () => {
     expect(pointerKindOf('mouse')).toBe('mouse')
     expect(pointerKindOf('')).toBe('mouse')
     expect(pointerKindOf('stylus')).toBe('mouse')
+  })
+})
+
+// The Activation guard's default origin veto (ADR-0016), a pure predicate over
+// a PointerEvent — verified without an engine. `true` lets the press through.
+describe('defaultShouldStart', () => {
+  const press = (target: EventTarget | null, button = 0) =>
+    ({ button, target }) as unknown as PointerEvent
+
+  test('allows a primary-button press on a non-interactive origin', () => {
+    expect(defaultShouldStart(press(document.createElement('div')))).toBe(true)
+  })
+
+  test('vetoes a non-primary (right / middle) button', () => {
+    expect(defaultShouldStart(press(document.createElement('div'), 2))).toBe(
+      false,
+    )
+  })
+
+  test('treats a missing button as the primary one (synthetic events)', () => {
+    expect(
+      defaultShouldStart({
+        target: document.createElement('div'),
+      } as unknown as PointerEvent),
+    ).toBe(true)
+  })
+
+  test.each([
+    'input',
+    'textarea',
+    'select',
+  ])('vetoes a press originating on <%s>', (tag) => {
+    expect(defaultShouldStart(press(document.createElement(tag)))).toBe(false)
+  })
+
+  test('vetoes a press on a child of contenteditable', () => {
+    const editable = document.createElement('div')
+    editable.setAttribute('contenteditable', 'true')
+    const span = document.createElement('span')
+    editable.append(span)
+    expect(defaultShouldStart(press(span))).toBe(false)
+  })
+
+  test('does NOT veto a <button> — a drag handle is often a button', () => {
+    expect(defaultShouldStart(press(document.createElement('button')))).toBe(
+      true,
+    )
   })
 })
