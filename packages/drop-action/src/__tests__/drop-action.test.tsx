@@ -61,14 +61,14 @@ afterEach(() => {
 // Second test seam: drive the public API end-to-end with injected rects.
 describe('createDropAction — public API behaviour', () => {
   test('exposes a namespace with at least Item, Zone, Active', () => {
-    const DA = createDropAction<Data>('namespace')
+    const DA = createDropAction<Data>()
     expect(typeof DA.Item).toBe('function')
     expect(typeof DA.Zone).toBe('function')
     expect(typeof DA.Active).toBe('function')
   })
 
   test('dropping an Item over a Zone calls onDrop with the dragged { id, data }', () => {
-    const DA = createDropAction<Data>('drop', { measure })
+    const DA = createDropAction<Data>({ measure })
     const onDrop = vi.fn()
     render(
       <>
@@ -91,7 +91,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test("accept() runs the Item's onAccept; not responding does not", () => {
-    const DA = createDropAction<Data>('accept', { measure })
+    const DA = createDropAction<Data>({ measure })
     const onAccept = vi.fn()
 
     const dragOnto = (onDrop: ZoneDropHandler<Data>) => {
@@ -126,7 +126,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test("reject() runs the Item's onReject; a no-op Reject is inert", () => {
-    const DA = createDropAction<Data>('reject', { measure })
+    const DA = createDropAction<Data>({ measure })
     const onReject = vi.fn()
 
     const dragOnto = (onDrop: ZoneDropHandler<Data>) => {
@@ -162,7 +162,7 @@ describe('createDropAction — public API behaviour', () => {
 
   test('accept(payload) / reject(payload) carry the payload to onAccept / onReject', () => {
     type Slot = { slot: number }
-    const DA = createDropAction<Data, Slot, string>('payloads', { measure })
+    const DA = createDropAction<Data, Slot, string>({ measure })
     const onAccept = vi.fn()
     const onReject = vi.fn()
 
@@ -202,7 +202,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test('the first verdict wins: a reject() after accept() is ignored', () => {
-    const DA = createDropAction<Data>('first-wins', { measure })
+    const DA = createDropAction<Data>({ measure })
     const onAccept = vi.fn()
     const onReject = vi.fn()
     render(
@@ -236,7 +236,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test('the Active Overlay renders in a document.body portal and follows the pointer', async () => {
-    const DA = createDropAction<Data>('overlay', { measure })
+    const DA = createDropAction<Data>({ measure })
     render(
       <>
         <DA.Item id="card" data={{ label: 'Card' }}>
@@ -277,7 +277,7 @@ describe('createDropAction — public API behaviour', () => {
     // restrictToVerticalAxis zeroes x. The Zone sits to the right (left:200),
     // so an x-zeroed Overlay can never reach it — Over must be null and the
     // drop must not fire, even though the pointer travels onto the Zone.
-    const DA = createDropAction<Data>('vertical', {
+    const DA = createDropAction<Data>({
       measure,
       modifiers: [restrictToVerticalAxis],
     })
@@ -309,7 +309,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test('snapToGrid rounds the published transform to the grid', () => {
-    const DA = createDropAction<Data>('grid', {
+    const DA = createDropAction<Data>({
       measure,
       modifiers: [snapToGrid(50)],
     })
@@ -336,7 +336,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test('useActive reflects the Active Item (id, data, status, originRect) during a drag and is null otherwise', async () => {
-    const DA = createDropAction<Data>('use-active', { measure })
+    const DA = createDropAction<Data>({ measure })
     function Probe() {
       const active = DA.useActive()
       if (!active) return <div data-testid="active">none</div>
@@ -377,7 +377,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test('useOver is truthy only while the Active Item is Over that Zone, and at most one Zone is Over', async () => {
-    const DA = createDropAction<Data>('use-over', { measure })
+    const DA = createDropAction<Data>({ measure })
     function Probe({ zoneId }: { zoneId: string }) {
       const over = DA.useOver(zoneId)
       return <div data-testid={`over-${zoneId}`}>{over ? over.id : 'none'}</div>
@@ -423,7 +423,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test('useItem(...).isDragging is true for the dragged Item and false otherwise', async () => {
-    const DA = createDropAction<Data>('is-dragging', { measure })
+    const DA = createDropAction<Data>({ measure })
     render(
       <>
         <DA.Item id="card" data={{ label: 'Card' }} className="card">
@@ -451,7 +451,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test('Active redirects the portal to a custom container', () => {
-    const DA = createDropAction<Data>('container', { measure })
+    const DA = createDropAction<Data>({ measure })
     const container = document.createElement('div')
     container.id = 'overlay-host'
     document.body.appendChild(container)
@@ -495,7 +495,7 @@ describe('createDropAction — public API behaviour', () => {
         height: 100,
       }
     }
-    const DA = createDropAction<Data>('isolation', {
+    const DA = createDropAction<Data>({
       measure: isolationMeasure,
     })
     const onA = vi.fn()
@@ -524,7 +524,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test('a mouse move below the distance threshold does not start a drag', () => {
-    const DA = createDropAction<Data>('below-threshold', { measure })
+    const DA = createDropAction<Data>({ measure })
     const onDrop = vi.fn()
     render(
       <>
@@ -552,7 +552,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test('a mouse move past the distance threshold starts a drag', () => {
-    const DA = createDropAction<Data>('above-threshold', { measure })
+    const DA = createDropAction<Data>({ measure })
     render(
       <>
         <DA.Item id="card" data={{ label: 'Card' }}>
@@ -576,7 +576,7 @@ describe('createDropAction — public API behaviour', () => {
   test('touch activates on press-and-hold, not on a quick swipe', () => {
     vi.useFakeTimers()
     try {
-      const DA = createDropAction<Data>('touch', {
+      const DA = createDropAction<Data>({
         measure,
         activationConstraint: { touch: { delay: 250, tolerance: 5 } },
       })
@@ -637,7 +637,7 @@ describe('createDropAction — public API behaviour', () => {
   })
 
   test('an Item and a Zone sharing an id do not collide', () => {
-    const DA = createDropAction<Data>('shared-id', { measure })
+    const DA = createDropAction<Data>({ measure })
     const onDrop = vi.fn()
     render(
       <>
@@ -665,7 +665,7 @@ describe('createDropAction — public API behaviour', () => {
 // Esc and pointercancel abort with no Drop at all.
 describe('createDropAction — async resolution, status, cancellation', () => {
   test('a Zone that awaits before deciding accepts after the delay', async () => {
-    const action = createDropAction<Data>('async-accept', { measure })
+    const action = createDropAction<Data>({ measure })
     const onAccept = vi.fn()
     let resolve: (() => void) | undefined
     const onDrop: ZoneDropHandler<Data> = async (_item, { accept }) => {
@@ -710,7 +710,7 @@ describe('createDropAction — async resolution, status, cancellation', () => {
   })
 
   test('a Zone that awaits then never responds rejects after the delay', async () => {
-    const action = createDropAction<Data>('async-reject', { measure })
+    const action = createDropAction<Data>({ measure })
     const onAccept = vi.fn()
     let resolve: (() => void) | undefined
     const onDrop = async () => {
@@ -748,7 +748,7 @@ describe('createDropAction — async resolution, status, cancellation', () => {
   })
 
   test('a synchronous accept() accepts within the release', async () => {
-    const action = createDropAction<Data>('sync-accept', { measure })
+    const action = createDropAction<Data>({ measure })
     const onAccept = vi.fn()
 
     render(
@@ -773,7 +773,7 @@ describe('createDropAction — async resolution, status, cancellation', () => {
   })
 
   test('Escape cancels an in-flight drag: no Drop, no onAccept, store resets', async () => {
-    const action = createDropAction<Data>('esc-cancel', { measure })
+    const action = createDropAction<Data>({ measure })
     const onDrop = vi.fn()
     const onAccept = vi.fn()
 
@@ -804,7 +804,7 @@ describe('createDropAction — async resolution, status, cancellation', () => {
   })
 
   test('pointercancel cancels an in-flight drag likewise', async () => {
-    const action = createDropAction<Data>('pointercancel', { measure })
+    const action = createDropAction<Data>({ measure })
     const onDrop = vi.fn()
     const onAccept = vi.fn()
 

@@ -73,11 +73,10 @@ type ActiveProps<Data> = {
 }
 
 // The factory: returns a namespace of peer components + hooks for one
-// self-contained Drop Action (ADR-0005). `id` names the channel; the
-// store is closure-scoped, so only this Drop Action's Items and Zones see
-// each other.
+// self-contained Drop Action (ADR-0005). The store is closure-scoped, so
+// only this Drop Action's Items and Zones see each other — isolation is
+// structural, so no channel id is needed (ADR-0002).
 export function createDropAction<Data = unknown, Accept = void, Reject = void>(
-  _id: string,
   options: CreateDropActionOptions = {},
 ) {
   const measure = options.measure ?? defaultMeasure

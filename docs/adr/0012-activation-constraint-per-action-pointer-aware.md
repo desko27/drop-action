@@ -1,7 +1,7 @@
 # Activation constraint is per-Drop-Action and pointer-type-aware
 
 The activation constraint is configured once through
-`createDropAction(id, { activationConstraint })` and is not overridable
+`createDropAction({ activationConstraint })` and is not overridable
 per Item, keeping the API surface small. Its default is pointer-type
 aware: roughly a 5px distance for mouse and pen (near-instant drag), and
 a ~200–250ms delay plus tolerance for touch, so a quick swipe scrolls a
