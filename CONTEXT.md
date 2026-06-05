@@ -9,7 +9,7 @@ general programming concepts (and React primitives) are excluded.
 ### Participants
 
 **Drop Action**:
-The named drag-and-drop interaction returned by `createDropAction(id)`,
+The drag-and-drop interaction returned by `createDropAction()`,
 which yields a namespace of components (`Zone`, `Item`, `Active`) and
 hooks — not a component itself. One Drop Action is a self-contained
 channel: only its own Items and Zones see each other, so collision

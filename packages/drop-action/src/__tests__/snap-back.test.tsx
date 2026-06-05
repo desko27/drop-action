@@ -63,7 +63,7 @@ const overlay = () => screen.queryByTestId('overlay')?.parentElement ?? null
 
 describe('drop-action/snap-back — Reject bounce', () => {
   test('a Reject animates the Overlay back to the origin rect; an Accept does not', async () => {
-    const DA = createDropAction<Data>('snap-reject', { measure })
+    const DA = createDropAction<Data>({ measure })
     // The reject Zone awaits, then returns without responding -> Reject. The
     // await lets the Dropping phase render, which is what snap-back keys off.
     let resolveReject: (() => void) | undefined
@@ -114,7 +114,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
   })
 
   test('a synchronous Accept does not snap back (no bounce, Overlay gone)', async () => {
-    const DA = createDropAction<Data>('snap-accept', { measure })
+    const DA = createDropAction<Data>({ measure })
     const onAccept = vi.fn()
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
@@ -150,7 +150,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
   })
 
   test('useSnapBack exposes snapping=true on Reject and false on Accept', async () => {
-    const DA = createDropAction<Data>('snap-state', { measure })
+    const DA = createDropAction<Data>({ measure })
     let resolveReject: (() => void) | undefined
     const rejectDrop = async () => {
       await new Promise<void>((r) => {
@@ -210,7 +210,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
   }
 
   test('an async Accept does not snap back — outcome is read, not inferred', async () => {
-    const DA = createDropAction<Data>('snap-accept-async', { measure })
+    const DA = createDropAction<Data>({ measure })
     const onAccept = vi.fn()
     // The Zone awaits, then accepts. A Dropping phase renders during the gap
     // (which the old "saw a 'dropping' frame" inference bounced on), but the
@@ -253,7 +253,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
   })
 
   test('releasing over no Zone (a No-drop) snaps back', async () => {
-    const DA = createDropAction<Data>('snap-no-drop', { measure })
+    const DA = createDropAction<Data>({ measure })
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
@@ -283,7 +283,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
   })
 
   test('cancelling with Escape snaps back from wherever the Overlay is', async () => {
-    const DA = createDropAction<Data>('snap-cancel-esc', { measure })
+    const DA = createDropAction<Data>({ measure })
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
@@ -313,7 +313,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
   })
 
   test('pointercancel snaps back likewise', async () => {
-    const DA = createDropAction<Data>('snap-cancel-pointer', { measure })
+    const DA = createDropAction<Data>({ measure })
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
@@ -342,7 +342,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
   })
 
   test('useSnapBack exposes the Return outcome so consumers can vary treatment', async () => {
-    const DA = createDropAction<Data>('snap-outcome', { measure })
+    const DA = createDropAction<Data>({ measure })
     const { useSnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,

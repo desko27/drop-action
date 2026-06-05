@@ -4,7 +4,7 @@ import { useState } from 'react'
 
 type CardData = { label: string }
 
-const DA = createDropAction<CardData>('demo')
+const DA = createDropAction<CardData>()
 
 // Snap-back is the opt-in subpath module: any Return (a Reject, a No-drop, or
 // a Cancel) eases the Overlay back to the Item's origin rect; an Accept does

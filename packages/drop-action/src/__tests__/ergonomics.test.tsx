@@ -52,7 +52,7 @@ afterEach(() => {
 
 describe('headless ergonomics — hooks with no wrapper node', () => {
   test('useItem/useZone drive a drop directly on <li>/<tr> with no extra node', () => {
-    const DA = createDropAction<Data>('hooks', { measure })
+    const DA = createDropAction<Data>({ measure })
     const onDrop = vi.fn()
 
     function Card() {
@@ -97,7 +97,7 @@ describe('headless ergonomics — hooks with no wrapper node', () => {
 
 describe('headless ergonomics — Item `as` wrapper', () => {
   test('as renders the chosen wrapper element', () => {
-    const DA = createDropAction<Data>('as', { measure })
+    const DA = createDropAction<Data>({ measure })
     render(
       <DA.Item id="card" data={{ label: 'Card' }} as="span">
         card
@@ -109,7 +109,7 @@ describe('headless ergonomics — Item `as` wrapper', () => {
 
 describe('headless ergonomics — custom drag handle (ADR-0009)', () => {
   test('the Item body does NOT start a drag; the external handle does', () => {
-    const DA = createDropAction<Data>('custom-handle', { measure })
+    const DA = createDropAction<Data>({ measure })
     const onDrop = vi.fn()
 
     function Tree() {
@@ -169,7 +169,7 @@ describe('headless ergonomics — custom drag handle (ADR-0009)', () => {
   })
 
   test('useDragHandle carries the ARIA defaults and defensive CSS', () => {
-    const DA = createDropAction<Data>('handle-aria', { measure })
+    const DA = createDropAction<Data>({ measure })
     function Tree() {
       const { ref, dragHandleProps } = DA.useItem(
         'card',
@@ -200,7 +200,7 @@ describe('headless ergonomics — custom drag handle (ADR-0009)', () => {
 
 describe('headless ergonomics — default Item ARIA defaults', () => {
   test('the default Item is the handle with button a11y + defensive CSS', () => {
-    const DA = createDropAction<Data>('default-aria', { measure })
+    const DA = createDropAction<Data>({ measure })
     render(
       <DA.Item id="card" data={{ label: 'Card' }}>
         card
