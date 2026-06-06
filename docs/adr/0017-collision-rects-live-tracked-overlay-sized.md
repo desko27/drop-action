@@ -9,6 +9,11 @@ _Refined by ADR-0021 and ADR-0022: the origin the Overlay anchors at is now the
 re-base below targets the Overlay's **centered home**, not the source's
 top-left._
 
+_Extended by ADR-0023: the live Zone re-measure below now also clips each Zone
+rect to its visible region (overflow ancestors + viewport) and drops Zones
+clipped to nothing, so a Zone scrolled out behind a clipping ancestor cannot be
+Over._
+
 Two refinements to how the rect collision detection tests against is built,
 both found dogfooding in ORION.
 
