@@ -1103,6 +1103,36 @@ describe('createDropAction — grabbing cursor (ADR-0019)', () => {
     expect(grabbingStyle()).toBeNull()
   })
 
+  test('unmounting the Item mid-drag still clears the cursor on release', () => {
+    // The cursor is tied to the pointer gesture (window listeners), not to the
+    // component tree: a release still reaches onUp even after the Item unmounts.
+    const DA = createDropAction<Data>({ measure })
+    const view = render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    expect(grabbingStyle()).not.toBeNull()
+
+    // The source Item unmounts mid-drag (e.g. an optimistic list change).
+    view.rerender(
+      <DA.Zone id="slot" onDrop={() => {}}>
+        slot
+      </DA.Zone>,
+    )
+    // The drag's window listeners survive, so releasing still clears the cursor.
+    release(ZONE_CENTER)
+    expect(grabbingStyle()).toBeNull()
+  })
+
   test('grabCursor: false injects no global grabbing cursor', () => {
     const DA = createDropAction<Data>({ measure, grabCursor: false })
     render(

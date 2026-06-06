@@ -48,6 +48,11 @@ The two halves differ sharply:
   sets `grabCursor: false` and drives the cursor themselves.
 - Touching `document.head` during a drag is a global side effect, kept narrow:
   only while a drag is live, only when `grabCursor` is on, removed on every exit
-  path. An abandoned drag (Item unmounted mid-drag) leaves it until the next
-  completed drag clears it — the same class of leak as the engine's window
-  listeners, which the core also does not unwind on unmount.
+  path. Removal is driven by the **pointer gesture**, not React: `cleanup()`
+  runs on `pointerup` / `pointercancel` / Escape — all `window` listeners — so
+  unmounting the `<Item>` or `<Active>` mid-drag does *not* strand the cursor,
+  because the release still reaches `onUp` / `onCancel` (even after
+  `lostpointercapture` from removing the captured node). It would persist only
+  if none of those ever fired after activation, which does not happen in normal
+  use — and a full navigation tears down the injected `<style>` with the
+  document anyway.
