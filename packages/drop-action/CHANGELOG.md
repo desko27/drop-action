@@ -1,5 +1,32 @@
 # drop-action
 
+## 1.0.0-next.7
+
+### Major Changes
+
+- ccb9123: The Return now homes the Overlay **centered** on the source's rect instead of aligning their top-left corners (ADR-0022), so a size-mismatched Overlay — or one lifted with a `grabAnchor` — eases back into the middle of its slot rather than to the source's corner. Identical when the Overlay matches the source's size.
+
+  **Breaking (`resolution` contract).** `Resolution.originRect` is renamed `homeRect` and redefined as the **Overlay's** home — its measured size, centered on the source's live rect — read via `useResolution()`. A Return still eases from `homeRect + transform` to `homeRect`. `<SnapBack>` / `useSnapBack` consumers are unaffected; a consumer reading `useResolution().originRect` directly must read `homeRect` (and note its `width` / `height` are now the Overlay's, its position centered on the source).
+
+### Minor Changes
+
+- ccb9123: Add a **grab anchor** — where the travelling Overlay hangs from the pointer (ADR-0021, CONTEXT.md). When the Overlay is smaller than the source Item the pointer could end up "grabbing the void" past the edge of the visible Overlay, because the grab offset was measured against the source. `grabAnchor` controls which point of the Overlay sits under the pointer.
+
+  The default is now `'proportional'`: the pointer keeps the same _fractional_ grip on the Overlay it had on the source — identical to the old absolute offset when the Overlay matches the source's size, and free of the void when it is smaller. Set it on the Drop Action (`createDropAction({ grabAnchor })`) or override per Item (`useItem(id, { grabAnchor })`, `<Item grabAnchor>`), resolving Item → Drop Action → `'proportional'`. Values:
+
+  - `'proportional'` (default)
+  - `'preserve'` — the old source-absolute pixel offset
+  - a fixed `{ x, y }` as a fraction of the Overlay — `center` (exported, sugar for `{ x: 0.5, y: 0.5 }`) pins the Overlay's middle under the pointer
+  - `(args) => ({ x, y })` for full control, given the source rect, the measured Overlay size, and the grab point
+
+  **Behaviour change:** only observable when the Overlay's size differs from the source (`'proportional'` vs the old absolute offset). Pass `grabAnchor: 'preserve'` to restore the previous behaviour.
+
+- 15bbfc3: Modifiers now clamp against the measured Overlay, not the source Item (ADR-0020), extending ADR-0017's fix from collision to the modifier pipeline.
+
+  `restrictToWindowEdges` kept the _visible_ Overlay inside the window by clamping the source Item's footprint — correct only while the Overlay matched the source's size. When they differ (e.g. a tall accordion-row source with a compact chip Overlay), the chip stuck before reaching the window edge and a larger Overlay overflowed past it. The clamp now uses the Overlay's own size, off the same measurement collision already shares (source-size fallback until the Overlay mounts).
+
+  **Breaking (`Modifier` contract).** `ModifierArgs.originRect` is replaced by `ModifierArgs.overlayRect`: the Overlay's footprint _at rest_ (the source's origin position with the measured Overlay size). A custom modifier reading `originRect` must read `overlayRect`. Note it is the _resting_ rect — collision's `overlayRect` is the _positioned_ one (origin + post-modifier transform); a modifier produces that transform, so it sees the Overlay before it is applied. The built-in axis modifiers and `snapToGrid` are unaffected — they only touch `transform`.
+
 ## 1.0.0-next.6
 
 ### Minor Changes
