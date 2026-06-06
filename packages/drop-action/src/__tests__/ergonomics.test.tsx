@@ -214,3 +214,48 @@ describe('headless ergonomics — default Item ARIA defaults', () => {
     expect(handle).toHaveStyle({ userSelect: 'none' })
   })
 })
+
+describe('cursor affordance (ADR-0019)', () => {
+  test('the default Item handle shows cursor: grab at rest', () => {
+    const DA = createDropAction<Data>({ measure })
+    render(
+      <DA.Item id="card" data={{ label: 'Card' }}>
+        card
+      </DA.Item>,
+    )
+    expect(screen.getByRole('button')).toHaveStyle({ cursor: 'grab' })
+  })
+
+  test('useDragHandle shows cursor: grab at rest', () => {
+    const DA = createDropAction<Data>({ measure })
+    function Tree() {
+      const { ref, dragHandleProps } = DA.useItem(
+        'card',
+        { label: 'Card' },
+        { customDragHandle: true },
+      )
+      const handleProps = DA.useDragHandle('card')
+      return (
+        <div ref={ref} {...dragHandleProps}>
+          <span data-testid="handle" {...handleProps}>
+            grab
+          </span>
+        </div>
+      )
+    }
+    render(<Tree />)
+    expect(screen.getByTestId('handle')).toHaveStyle({ cursor: 'grab' })
+  })
+
+  test('grabCursor: false drops the grab cursor but keeps the defensive CSS', () => {
+    const DA = createDropAction<Data>({ measure, grabCursor: false })
+    render(
+      <DA.Item id="card" data={{ label: 'Card' }}>
+        card
+      </DA.Item>,
+    )
+    const handle = screen.getByRole('button')
+    expect(handle).not.toHaveStyle({ cursor: 'grab' })
+    expect(handle).toHaveStyle({ userSelect: 'none' })
+  })
+})

@@ -1049,3 +1049,76 @@ describe('createDropAction — selective reads (ADR-0018)', () => {
     expect(renders.a).toBeGreaterThan(aBefore)
   })
 })
+
+describe('createDropAction — grabbing cursor (ADR-0019)', () => {
+  const grabbingStyle = () =>
+    document.getElementById('drop-action-grabbing-cursor')
+
+  // Isolate from any earlier test that activated a drag without releasing.
+  beforeEach(() => grabbingStyle()?.remove())
+
+  test('a live drag injects a global grabbing cursor that clears on release', () => {
+    const DA = createDropAction<Data>({ measure })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    expect(grabbingStyle()).toBeNull()
+    press(screen.getByRole('button'), ITEM_CENTER)
+    // Pressed but not yet activated (still pending): no global cursor.
+    expect(grabbingStyle()).toBeNull()
+
+    move(ZONE_CENTER) // crosses the threshold → the drag activates
+    expect(grabbingStyle()?.textContent).toContain('grabbing')
+
+    release(ZONE_CENTER)
+    // Released: the pointer is up, so grabbing clears at once.
+    expect(grabbingStyle()).toBeNull()
+  })
+
+  test('Escape (a Cancel) also clears the grabbing cursor', () => {
+    const DA = createDropAction<Data>({ measure })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    expect(grabbingStyle()).not.toBeNull()
+    pressEscape()
+    expect(grabbingStyle()).toBeNull()
+  })
+
+  test('grabCursor: false injects no global grabbing cursor', () => {
+    const DA = createDropAction<Data>({ measure, grabCursor: false })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    expect(grabbingStyle()).toBeNull()
+    release(ZONE_CENTER)
+  })
+})

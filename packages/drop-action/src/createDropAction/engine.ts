@@ -41,10 +41,35 @@ type EngineDeps<Data, Accept, Reject> = {
   // The Activation guard (ADR-0016): resolved (default or custom) in the
   // factory; vetoes ineligible presses before the pending phase.
   shouldStart: ShouldStart
+  // Whether to show the global grabbing cursor while a drag is live (ADR-0019).
+  grabCursor: boolean
   // The shared handle on the rendered Overlay node (ADR-0017, ADR-0018).
   overlay: OverlayRegistry
   // The store's only writer (ADR-0018): emits a transition, never per frame.
   commit: Commit<Data>
+}
+
+// The global grabbing cursor (ADR-0019). While a drag is live the pointer is
+// captured and roams the page, so a handle-local cursor is not enough — only a
+// document-wide rule shows `grabbing` everywhere without flickering to whatever
+// is under the pointer. We inject one shared `<style>` by id (idempotent), so a
+// drag shows it and ends remove it. Touches `document` only when a drag is
+// actually under way, so import and SSR stay DOM-free. Concurrent drags (the
+// rare multi-pointer / multi-Drop-Action case) share the one node; the first to
+// end clears it — a purely cosmetic edge we accept for a tiny, self-healing
+// implementation (the next completed drag re-adds and clears it cleanly).
+const GRABBING_STYLE_ID = 'drop-action-grabbing-cursor'
+
+const showGrabbingCursor = () => {
+  if (document.getElementById(GRABBING_STYLE_ID)) return
+  const style = document.createElement('style')
+  style.id = GRABBING_STYLE_ID
+  style.textContent = '*{cursor:grabbing!important}'
+  document.head.appendChild(style)
+}
+
+const hideGrabbingCursor = () => {
+  document.getElementById(GRABBING_STYLE_ID)?.remove()
 }
 
 // The custom Pointer Events engine (ADR-0001). A single unified stream —
@@ -68,6 +93,7 @@ export function createEngine<Data, Accept, Reject>({
   collisionDetection,
   activationConstraint,
   shouldStart,
+  grabCursor,
   overlay,
   commit,
 }: EngineDeps<Data, Accept, Reject>) {
@@ -283,6 +309,10 @@ export function createEngine<Data, Accept, Reject>({
         window.removeEventListener('resize', onScrollResize)
         if (frame !== null) cancelAnimationFrame(frame)
         if (remeasureFrame !== null) cancelAnimationFrame(remeasureFrame)
+        // The grabbing cursor ends at release (ADR-0019): the pointer is up, so
+        // it must clear even though an async Dropping phase may still be in
+        // flight. cleanup runs on every exit path, exactly once per drag.
+        if (grabCursor) hideGrabbingCursor()
       }
 
       const onUp = (e: PointerEvent) => {
@@ -372,6 +402,9 @@ export function createEngine<Data, Accept, Reject>({
       over = overAt(activateX, activateY)
       commit({ active: draggingActive(), over, resolution: null })
       if (overlay.node) placeOverlay(overlay.node)
+      // Show grabbing only once the press has truly become a drag (not on a
+      // click/tap that never activated) — ADR-0019.
+      if (grabCursor) showGrabbingCursor()
 
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)

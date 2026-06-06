@@ -106,6 +106,13 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   // (ADR-0016); a custom `shouldStart` replaces it (compose `defaultShouldStart`
   // to keep the defaults).
   const shouldStart = options.shouldStart ?? defaultShouldStart
+  // Grab/grabbing cursor on by default (ADR-0019). The idle handle carries the
+  // `grab` affordance unless opted out; the engine handles the global
+  // `grabbing` while dragging. Computed once so the style reference is stable.
+  const grabCursor = options.grabCursor ?? true
+  const idleHandleStyle: CSSProperties = grabCursor
+    ? { ...HANDLE_STYLE, cursor: 'grab' }
+    : HANDLE_STYLE
   const store = createStore<Data>()
 
   // Item ids and Zone ids occupy separate id spaces — two maps — so an
@@ -127,6 +134,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     collisionDetection,
     activationConstraint: options.activationConstraint,
     shouldStart,
+    grabCursor,
     overlay,
     commit: store.commit,
   })
@@ -241,7 +249,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
           // Only suppress touch scrolling once a drag is under way; pre-drag
           // the handle keeps default touch-action so a swipe can scroll
           // (ADR-0012).
-          style: isDragging ? DRAGGING_HANDLE_STYLE : HANDLE_STYLE,
+          style: isDragging ? DRAGGING_HANDLE_STYLE : idleHandleStyle,
         }
 
     return { ref, dragHandleProps, isDragging }
@@ -264,7 +272,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
       'aria-roledescription': 'draggable',
       // Only suppress touch scrolling once a drag is under way; pre-drag the
       // handle keeps default touch-action so a swipe can scroll (ADR-0012).
-      style: isDragging ? DRAGGING_HANDLE_STYLE : HANDLE_STYLE,
+      style: isDragging ? DRAGGING_HANDLE_STYLE : idleHandleStyle,
     }
   }
 
