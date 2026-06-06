@@ -1,5 +1,21 @@
 # drop-action
 
+## 1.0.0-next.6
+
+### Minor Changes
+
+- eacc264: Add a grab/grabbing cursor affordance (ADR-0019). The drag handle now shows `cursor: grab` at rest, and the whole document shows `cursor: grabbing` while a drag is live — the latter via a global `<style>` injected for the drag's duration, because a captured pointer roams the page and a handle-local cursor would flicker to whatever is under it. It is on by default; pass `createDropAction({ grabCursor: false })` to take full control of the cursor yourself (the library then touches no cursor — useful if you drive per-Zone cursors like `no-drop`).
+
+  Behaviour change: handles now get `cursor: grab` by default and a global `grabbing` cursor appears during drags. Set `grabCursor: false` to opt out.
+
+### Patch Changes
+
+- 5385c6f: Raise the default mouse/pen activation distance from 4px to 8px (ADR-0012). A press now has to travel 8px before it turns into a drag, giving a larger margin so a slightly shaky click is less likely to start a drag by accident. Touch is unchanged (250ms delay, 5px tolerance).
+
+  Behaviour change: drags that previously began after a 4–7px mouse or pen move now stay a click. Pass `createDropAction({ activationConstraint: { mouse: { distance: 4 }, pen: { distance: 4 } } })` to restore the old threshold.
+
+- 33c5c8f: Snap-back (and any Return) now eases the Overlay back to where the source **currently** sits, not its drag-start position (ADR-0017). A drag that scrolled the page or list under the fixed Overlay used to snap the Item back to a stale frozen spot; the core now re-measures the source at release and re-bases the resolution onto it. The `useResolution()` contract is unchanged in shape and intent — `originRect + transform` is still the Overlay's release position and `originRect` still the home a Return eases to — only the frame is the source's live one. If the source has unmounted or collapsed to a zero-area rect by release, it falls back to the frozen origin.
+
 ## 1.0.0-next.5
 
 ### Major Changes
