@@ -540,7 +540,7 @@ describe('createDropAction — public API behaviour', () => {
       </>,
     )
 
-    // Press, nudge 2px (under the 4px mouse default), release: a click.
+    // Press, nudge 2px (under the 8px mouse default), release: a click.
     press(screen.getByRole('button'), ITEM_CENTER)
     move({ x: ITEM_CENTER.x + 2, y: ITEM_CENTER.y })
     // No Active state was ever published while below the threshold.
@@ -568,7 +568,7 @@ describe('createDropAction — public API behaviour', () => {
     )
 
     press(screen.getByRole('button'), ITEM_CENTER)
-    // 10px crosses the 4px default → the drag begins and the Overlay mounts.
+    // 10px crosses the 8px default → the drag begins and the Overlay mounts.
     move({ x: ITEM_CENTER.x + 10, y: ITEM_CENTER.y })
     expect(screen.queryByTestId('overlay')).not.toBeNull()
   })

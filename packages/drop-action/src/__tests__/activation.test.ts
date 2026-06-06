@@ -26,12 +26,12 @@ describe('evaluateActivation', () => {
     })
 
     test('mouse activates once the distance threshold is crossed', () => {
-      // 4px straight down meets the default 4px threshold.
+      // 8px straight down meets the default 8px threshold.
       expect(
         evaluateActivation({
           kind: 'mouse',
           dx: 0,
-          dy: 4,
+          dy: 8,
           elapsed: 0,
           constraint,
         }),
@@ -39,12 +39,13 @@ describe('evaluateActivation', () => {
     })
 
     test('distance is euclidean, not per-axis', () => {
-      // 3-4-5 triangle: 5px total crosses the 4px threshold.
+      // 6px on each axis is under the 8px threshold, but the ~8.49px
+      // diagonal crosses it.
       expect(
         evaluateActivation({
           kind: 'mouse',
-          dx: 3,
-          dy: 4,
+          dx: 6,
+          dy: 6,
           elapsed: 0,
           constraint,
         }),

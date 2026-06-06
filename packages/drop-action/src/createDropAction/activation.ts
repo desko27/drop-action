@@ -25,8 +25,8 @@ export const defaultShouldStart = (event: PointerEvent): boolean => {
 // delay within a tolerance so a quick swipe scrolls the list while a
 // press-and-hold drags.
 export const DEFAULT_ACTIVATION_CONSTRAINT: Required<ActivationConstraint> = {
-  mouse: { distance: 4 },
-  pen: { distance: 4 },
+  mouse: { distance: 8 },
+  pen: { distance: 8 },
   touch: { delay: 250, tolerance: 5 },
 }
 

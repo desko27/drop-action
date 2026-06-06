@@ -8,7 +8,7 @@ no-per-Item-override constraint below still holds._
 The activation constraint is configured once through
 `createDropAction({ activationConstraint })` and is not overridable
 per Item, keeping the API surface small. Its default is pointer-type
-aware: roughly a 5px distance for mouse and pen (near-instant drag), and
+aware: an 8px distance for mouse and pen (near-instant drag), and
 a ~200–250ms delay plus tolerance for touch, so a quick swipe scrolls a
 touch list while a brief press-and-hold starts a drag. `touch-action` is
 managed around activation rather than applied blanket, so touch scrolling
