@@ -3,6 +3,11 @@
 _Extends ADR-0017's "measured Overlay, not source" principle from the collision
 rect to the modifier pipeline._
 
+_Refined by ADR-0021: `overlayRect` at rest is anchored at the **grab-anchored
+origin**, not the source's top-left. The clamp arithmetic is unchanged — it
+constrains whatever resting rect it is handed — and clamping the anchored
+Overlay against the window is exactly right._
+
 A Modifier's job is to constrain what the user sees travel — the Overlay
 (ADR-0007). But the pipeline fed each Modifier the **source Item's** rect
 (`originRect`), frozen at drag start. `restrictToWindowEdges` clamped the

@@ -2,6 +2,7 @@ import type {
   DraggedItem,
   DropOutcome,
   DropStatus,
+  GrabAnchor,
   Rect,
   Transform,
   ZoneDropHandler,
@@ -24,18 +25,18 @@ export type ActiveSnapshot<Data> = {
 
 // The terminal snapshot the core publishes the instant a drag ends
 // (ADR-0013), read with `useResolution()`. Emitted atomically as `active`
-// becomes null and kept until the next drag starts. `originRect` is the
-// source's rect re-measured at release — its live home, so a Return that
-// scrolled the page under the fixed Overlay still eases back to where the
-// source now sits, not its drag-start position (ADR-0017). `transform` is
-// the Overlay delta against that home — the release point for a Drop or
-// No-drop, the live position for a Cancel — so a Return animation eases from
-// `originRect + transform` (the Overlay's release position) back to
-// `originRect`. The invariant holds: those two endpoints are unchanged by the
-// re-base; only the frame they are expressed in is the source's live one.
+// becomes null and kept until the next drag starts. `homeRect` is the
+// **Overlay's** home — its measured size, centered on the source's rect
+// re-measured at release (ADR-0022) — so a size-mismatched Overlay returns to
+// its slot rather than the source's corner, and a Return that scrolled the page
+// under the fixed Overlay still eases back to where the source now sits, not its
+// drag-start position (ADR-0017). `transform` is the Overlay delta against that
+// home — the release point for a Drop or No-drop, the live position for a
+// Cancel — so a Return animation eases from `homeRect + transform` (the
+// Overlay's release position) back to `homeRect`.
 export type Resolution<Data> = {
   outcome: DropOutcome
-  originRect: Rect
+  homeRect: Rect
   transform: Transform
   item: DraggedItem<Data>
 }
@@ -58,6 +59,10 @@ export type ItemRegistration<Data, Accept = void, Reject = void> = {
   onRejectRef: Ref<
     ((item: DraggedItem<Data>, payload: Reject) => void) | undefined
   >
+  // The Item's grab-anchor override (ADR-0021), read at drag start; a ref so
+  // re-renders never re-register the node. Falls back to the Drop Action's
+  // setting, then `'proportional'`.
+  grabAnchorRef: Ref<GrabAnchor | undefined>
 }
 
 // A Zone registers its node for measuring/collision together with its single

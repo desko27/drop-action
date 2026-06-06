@@ -6,6 +6,11 @@ scrolled the page eases back to where the source now sits. The endpoints are
 unchanged — `originRect + transform` is still the Overlay's release position and
 `originRect` still the home it eases to — only the frame is the live one._
 
+_Refined by ADR-0022: that home field is renamed `originRect → homeRect` and
+redefined as the **Overlay's** home — its measured size, centered on the
+source's live rect — so a size-mismatched Overlay returns to its slot, not the
+source's corner._
+
 A drag ends in one of four mutually exclusive terminal outcomes — Accept,
 Reject, No-drop (released over no Zone), or Cancel (Esc / pointercancel
 before any Drop). The core publishes which one happened through a

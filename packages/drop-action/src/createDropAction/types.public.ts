@@ -123,6 +123,33 @@ export type ModifierArgs = {
 // Overlay's CSS transform and the rect collision tests against (ADR-0007).
 export type Modifier = (args: ModifierArgs) => Transform
 
+// A point on the Overlay as a fraction of its size per axis: `{ x: 0.5, y: 0.5 }`
+// is the centre, `{ x: 0, y: 0 }` its top-left. Values outside `[0,1]` place the
+// point outside the Overlay — deliberately, the consumer's choice.
+export type GrabAnchorPoint = { x: number; y: number }
+
+// What a grab-anchor function reasons over: the source Item's frozen origin
+// rect, the measured Overlay size (falling back to the source size until the
+// Overlay mounts), and the press point the drag was grabbed at.
+export type GrabAnchorArgs = {
+  originRect: Rect
+  overlaySize: { width: number; height: number }
+  grab: { x: number; y: number }
+}
+
+// Where the travelling Overlay hangs from the pointer (CONTEXT.md — Grab
+// anchor, ADR-0021). `'proportional'` (the default) holds the same fractional
+// grip on the Overlay the press had on the source — identical to an absolute
+// offset when Overlay and source match in size, and free of "grabbing the void"
+// when the Overlay is smaller. `'preserve'` keeps the source-absolute pixel
+// offset. A fixed point pins that fraction of the Overlay under the pointer
+// (e.g. `center`). A function computes the point per drag.
+export type GrabAnchor =
+  | 'proportional'
+  | 'preserve'
+  | GrabAnchorPoint
+  | ((args: GrabAnchorArgs) => GrabAnchorPoint)
+
 export type CreateDropActionOptions = {
   measure?: Measure
   // The pointer-type-aware threshold a press must cross to become a drag
@@ -142,6 +169,11 @@ export type CreateDropActionOptions = {
   // `cursor: grabbing` while a drag is live. Set `false` to take full control
   // of the cursor yourself (the library then touches no cursor).
   grabCursor?: boolean
+  // Where the travelling Overlay hangs from the pointer (ADR-0021). Defaults to
+  // `'proportional'`; overridable per Item via `useItem`. `'preserve'` keeps the
+  // old source-absolute offset; a fixed point (e.g. `center`) or a function pins
+  // a chosen point of the Overlay under the pointer.
+  grabAnchor?: GrabAnchor
 }
 
 // Options for the `useItem` primitive. `customDragHandle` narrows the
@@ -152,6 +184,10 @@ export type UseItemOptions<Data = unknown, Accept = void, Reject = void> = {
   onAccept?: (item: DraggedItem<Data>, payload: Accept) => void
   onReject?: (item: DraggedItem<Data>, payload: Reject) => void
   customDragHandle?: boolean
+  // Overrides the Drop Action's grab anchor for this Item (ADR-0021): where its
+  // Overlay hangs from the pointer. Falls back to the Drop Action's setting,
+  // then `'proportional'`.
+  grabAnchor?: GrabAnchor
 }
 
 // The accessibility + defensive-CSS surface shared by the default Item

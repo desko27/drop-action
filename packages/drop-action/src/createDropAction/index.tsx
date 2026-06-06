@@ -25,6 +25,7 @@ import type {
   CreateDropActionOptions,
   DraggedItem,
   DragHandleProps,
+  GrabAnchor,
   ItemHandleProps,
   OverlayProps,
   UseItemOptions,
@@ -63,6 +64,7 @@ type ItemProps<Data, Accept = void, Reject = void> = {
   onAccept?: (item: DraggedItem<Data>, payload: Accept) => void
   onReject?: (item: DraggedItem<Data>, payload: Reject) => void
   customDragHandle?: boolean
+  grabAnchor?: GrabAnchor
   as?: ElementType
   className?: string
   children?: ReactNode
@@ -135,6 +137,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     activationConstraint: options.activationConstraint,
     shouldStart,
     grabCursor,
+    grabAnchor: options.grabAnchor,
     overlay,
     commit: store.commit,
   })
@@ -220,10 +223,21 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     onAcceptRef.current = itemOptions.onAccept
     const onRejectRef = useRef(itemOptions.onReject)
     onRejectRef.current = itemOptions.onReject
+    // The Item's grab-anchor override (ADR-0021), kept in a ref so a changed
+    // value never re-registers the node; read at drag start.
+    const grabAnchorRef = useRef(itemOptions.grabAnchor)
+    grabAnchorRef.current = itemOptions.grabAnchor
 
     const ref = useCallback(
       (node: HTMLElement | null) => {
-        if (node) items.set(id, { node, dataRef, onAcceptRef, onRejectRef })
+        if (node)
+          items.set(id, {
+            node,
+            dataRef,
+            onAcceptRef,
+            onRejectRef,
+            grabAnchorRef,
+          })
         else items.delete(id)
       },
       [id],
@@ -308,6 +322,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     onAccept,
     onReject,
     customDragHandle,
+    grabAnchor,
     as: As = 'div',
     className,
     children,
@@ -316,6 +331,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
       onAccept,
       onReject,
       customDragHandle,
+      grabAnchor,
     })
 
     return (
