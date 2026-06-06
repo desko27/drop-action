@@ -1,5 +1,68 @@
 # drop-action
 
+## 1.0.0-next.5
+
+### Major Changes
+
+- 6ba158c: The Overlay now moves **imperatively** and the store carries only low-frequency state, so a busy page no longer re-renders every Zone on every animation frame (ADR-0018). A new `useOverlay()` primitive returns `{ ref, style }` to spread onto the Overlay element; the engine writes its `translate3d` straight to the node each frame and never through React. `<Active>` and `<SnapBack>` are now thin sugar over it. The store emits only on transitions (drag start, status change, Over change, resolution), and each read (`useActive`, `useOver`, `useResolution`, `isDragging`) returns a referentially-stable value, so a consumer re-renders only when its own slice changes — an Over change re-renders just the two Zones whose membership flips.
+
+  **Breaking:** `transform` is removed from `ActiveSnapshot` / `useActive()` — the per-frame transform lives only in the engine now. Position a headless Overlay with `useOverlay()` instead of reading `active.transform`:
+
+  ```tsx
+  // before
+  const active = DnD.useActive();
+  if (active)
+    return (
+      <div
+        style={{
+          position: "fixed",
+          transform: `translate3d(${
+            active.originRect.left + active.transform.x
+          }px, …)`,
+        }}
+      >
+        …
+      </div>
+    );
+
+  // after
+  const active = DnD.useActive();
+  const { ref, style } = DnD.useOverlay();
+  if (active)
+    return (
+      <div ref={ref} style={style}>
+        …
+      </div>
+    ); // the engine moves it
+  ```
+
+  **Breaking:** `createSnapBack` now also needs `useOverlay`: `createSnapBack({ useActive, useResolution, useOverlay })`.
+
+### Minor Changes
+
+- 6ba158c: Add an **Activation guard** — a `shouldStart?: (event: PointerEvent) => boolean` option on `createDropAction`, evaluated on the initial pointerdown before the activation constraint, deciding whether a press may become a drag at all (ADR-0016). Its default, exported as `defaultShouldStart`, refuses presses that begin on interactive content (`input`, `textarea`, `select`, `[contenteditable]`, matched with `closest()`) and on non-primary mouse buttons — so a click on a checkbox inside a whole-row Item, or a right-click, no longer hijacks into a drag. `<button>` is deliberately not vetoed, since a drag handle is often a button.
+
+  A custom `shouldStart` replaces the default; compose it to keep the defaults:
+
+  ```ts
+  createDropAction({ shouldStart: (e) => defaultShouldStart(e) && mine(e) });
+  // drag from anywhere:
+  createDropAction({ shouldStart: () => true });
+  ```
+
+  Behaviour change: with no `shouldStart`, drags that previously began on a form control inside an Item now don't. Pass `shouldStart: () => true` to restore the old "drag from anywhere" behaviour.
+
+- 6ba158c: Collision now tracks scroll and uses the real Overlay's footprint (ADR-0017), fixing two issues found dogfooding:
+
+  - **Scrolling mid-drag no longer drifts Over off the visible Zones.** Zone rects are re-measured on `scroll` (capture phase, so nested scroll containers count) and `resize`, rAF-throttled — always on, not a knob. The source origin stays frozen (the Overlay is `position: fixed` and tracks the pointer), so there is no per-`pointermove` cost; Over is recomputed but only re-emitted when it actually changes.
+  - **Collision is sized from the measured Overlay, not the source Item.** When the Overlay differs in size from the source (e.g. a tall accordion-row source with a compact chip Overlay), Over now matches the Overlay the user actually sees, not the source's footprint. The `Measure` boundary gains a `type: 'overlay'` target; a `measure` that ignores `type` treats it like an Item, so existing measures keep working.
+
+  The default detector is unchanged (`rectIntersection`): `pointerWithin` follows the raw pointer and would diverge from a modifier-constrained Overlay, so it stays opt-in per Drop Action.
+
+### Patch Changes
+
+- 6ba158c: `<SnapBack>` now sets `data-snapping` on its Overlay element while the Return bounce is animating (and not during a live drag), mirroring `<Item data-dragging>`. This lets a synthetic/E2E drag-retry loop tell a snap-back-in-progress apart from a live drag. The `snapping` flag was already on `useSnapBack()`; this just surfaces it on the DOM.
+
 ## 1.0.0-next.4
 
 ### Minor Changes

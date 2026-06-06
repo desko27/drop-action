@@ -5,10 +5,14 @@
     "drop-action": "0.1.0"
   },
   "changesets": [
+    "activation-guard",
     "channel-component-return",
     "drop-verdict-accept-reject",
+    "imperative-overlay",
+    "live-collision-rects",
     "remove-aschild",
     "remove-create-drop-action-id",
-    "return-resolution"
+    "return-resolution",
+    "snapback-data-snapping"
   ]
 }
