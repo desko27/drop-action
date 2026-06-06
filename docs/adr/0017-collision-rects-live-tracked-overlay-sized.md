@@ -9,10 +9,17 @@ both found dogfooding in ORION.
   Over off the visible Zones — the library *feels broken* — so this is not a
   knob: re-measurement is always-on core behaviour. The engine re-measures Zone
   rects on `scroll` (capture phase, to catch nested scrollers) and `resize`,
-  rAF-throttled. The source `originRect` stays frozen: the Overlay is
-  `position: fixed` and tracks the pointer, so it (and the rect collision tests
-  against) need no origin re-measure — only the Zones, which scroll under it,
-  do. Zones move in viewport coordinates only on scroll/resize/layout-change,
+  rAF-throttled. The source `originRect` stays frozen *for the live gesture*:
+  the Overlay is `position: fixed` and tracks the pointer, so it (and the rect
+  collision tests against) need no origin re-measure — only the Zones, which
+  scroll under it, do. The one exception is the terminal `resolution` snapshot,
+  which re-measures the source at release (falling back to the frozen origin if
+  it has unmounted or collapsed to a zero-area rect) and re-bases the release
+  transform onto it, so a Return (Snap-back) eases back to where the source
+  *now* sits rather than its stale drag-start position (ADR-0013). The release
+  position and the home it eases to are unchanged by the re-base; only the frame
+  they are expressed in becomes the source's live one. Zones move in viewport
+  coordinates only on scroll/resize/layout-change,
   never on pointer move, so there is no per-`pointermove` cost and the per-frame
   `getBoundingClientRect` thrash ADR-0006 feared is avoided; a re-measure
   recomputes Over but emits only on an Over change (ADR-0018). Zones that resize
