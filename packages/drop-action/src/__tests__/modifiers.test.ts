@@ -12,7 +12,7 @@ const rect = (
   top: number,
   right: number,
   bottom: number,
-): ModifierArgs['originRect'] => ({
+): ModifierArgs['overlayRect'] => ({
   left,
   top,
   right,
@@ -22,10 +22,11 @@ const rect = (
 })
 
 // Build ModifierArgs with sensible defaults; tests override what matters.
+// `overlayRect` is the Overlay's resting footprint (ADR-0020).
 const args = (
   over: Partial<ModifierArgs> & { transform: Transform },
 ): ModifierArgs => ({
-  originRect: rect(0, 0, 100, 100),
+  overlayRect: rect(0, 0, 100, 100),
   pointer: { x: 0, y: 0 },
   windowWidth: 1024,
   windowHeight: 768,
@@ -52,20 +53,34 @@ describe('restrictToWindowEdges', () => {
   })
 
   test('clamps the trailing edge to the right/bottom of the viewport', () => {
-    // Origin right=100/bottom=100 in a 1024x768 window: max shift is
+    // Overlay right=100/bottom=100 in a 1024x768 window: max shift is
     // 924 / 668 before an edge exits.
     expect(
       restrictToWindowEdges(args({ transform: { x: 2000, y: 2000 } })),
     ).toEqual({ x: 924, y: 668 })
   })
 
-  test('respects the origin offset when clamping', () => {
-    // Origin already at left:200,right:300 — leftward room is 200.
+  test('clamps the trailing edge by the Overlay size, not the source (ADR-0020)', () => {
+    // A 40-wide chip Overlay resting at the origin: its trailing edge is at
+    // 40, so it may shift 984 before exiting a 1024-wide window — 60 further
+    // than a 100-wide source footprint (924) would have allowed.
+    expect(
+      restrictToWindowEdges(
+        args({
+          transform: { x: 2000, y: 0 },
+          overlayRect: rect(0, 0, 40, 40),
+        }),
+      ),
+    ).toEqual({ x: 984, y: 0 })
+  })
+
+  test('respects the resting offset when clamping', () => {
+    // Overlay already at left:200,right:300 — leftward room is 200.
     expect(
       restrictToWindowEdges(
         args({
           transform: { x: -500, y: 0 },
-          originRect: rect(200, 200, 300, 300),
+          overlayRect: rect(200, 200, 300, 300),
         }),
       ),
     ).toEqual({ x: -200, y: 0 })

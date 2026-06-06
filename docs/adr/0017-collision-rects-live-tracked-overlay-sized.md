@@ -1,5 +1,9 @@
 # Collision rects: live-tracked against scroll, sized from the measured Overlay
 
+_Extended by ADR-0020: the same "measured Overlay, not source" principle now
+also governs the modifier clamp (`restrictToWindowEdges`), via an `overlayRect`
+on `ModifierArgs`._
+
 Two refinements to how the rect collision detection tests against is built,
 both found dogfooding in ORION.
 

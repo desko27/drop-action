@@ -149,6 +149,22 @@ export function createEngine<Data, Accept, Reject>({
         item.node.setPointerCapture(pointerId)
       } catch {}
 
+      // Resolve the Overlay's own size: measure once when its node is first
+      // available (ADR-0017), cache it for the gesture, fall back to the source
+      // size until then. Shared by the modifier pipeline (which clamps the
+      // resting Overlay rect) and collision (which tests the positioned one),
+      // so the two never disagree on how big the Overlay is.
+      const resolveOverlaySize = (): { width: number; height: number } => {
+        if (!overlaySize && overlay.node) {
+          const r = measure({ node: overlay.node, id, type: 'overlay' })
+          overlaySize = { width: r.width, height: r.height }
+        }
+        return {
+          width: overlaySize ? overlaySize.width : originRect.width,
+          height: overlaySize ? overlaySize.height : originRect.height,
+        }
+      }
+
       // Run the modifier pipeline left-to-right, each modifier feeding the
       // next, starting from the raw pointer delta (ADR-0007). The delta is
       // measured from the original press, so the Overlay does not jump on
@@ -156,11 +172,25 @@ export function createEngine<Data, Accept, Reject>({
       // stay pure.
       const resolveTransform = (px: number, py: number): Transform => {
         const pointer = { x: px, y: py }
+        // The Overlay's footprint at rest (transform 0): the source's origin
+        // position with the measured Overlay size (ADR-0020). The modifier
+        // adds the transform it produces, so this is collision's rect minus
+        // that not-yet-applied transform — a modifier clamps what the user
+        // sees travel, not the invisible source.
+        const { width, height } = resolveOverlaySize()
+        const overlayRect: Rect = {
+          left: originRect.left,
+          top: originRect.top,
+          width,
+          height,
+          right: originRect.left + width,
+          bottom: originRect.top + height,
+        }
         let next: Transform = { x: px - startX, y: py - startY }
         for (const modifier of modifiers) {
           next = modifier({
             transform: next,
-            originRect,
+            overlayRect,
             pointer,
             windowWidth: window.innerWidth,
             windowHeight: window.innerHeight,
@@ -183,12 +213,7 @@ export function createEngine<Data, Accept, Reject>({
       // Overlay size anchored at origin + transform, so Over matches what the
       // user sees travel even when the Overlay differs in size from the source.
       const overlayRect = (): Rect => {
-        if (!overlaySize && overlay.node) {
-          const r = measure({ node: overlay.node, id, type: 'overlay' })
-          overlaySize = { width: r.width, height: r.height }
-        }
-        const width = overlaySize ? overlaySize.width : originRect.width
-        const height = overlaySize ? overlaySize.height : originRect.height
+        const { width, height } = resolveOverlaySize()
         const left = originRect.left + transform.x
         const top = originRect.top + transform.y
         return {
