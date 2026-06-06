@@ -132,6 +132,11 @@ export type CreateDropActionOptions = {
   // The strategy that picks which Zone is Over (ADR-0006). Defaults to
   // `rectIntersection` in the factory.
   collisionDetection?: CollisionDetection
+  // Grab/grabbing cursor affordance (ADR-0019). When `true` (default), the
+  // handle shows `cursor: grab` at rest and the whole document shows
+  // `cursor: grabbing` while a drag is live. Set `false` to take full control
+  // of the cursor yourself (the library then touches no cursor).
+  grabCursor?: boolean
 }
 
 // Options for the `useItem` primitive. `customDragHandle` narrows the

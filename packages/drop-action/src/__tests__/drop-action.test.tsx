@@ -1049,3 +1049,106 @@ describe('createDropAction — selective reads (ADR-0018)', () => {
     expect(renders.a).toBeGreaterThan(aBefore)
   })
 })
+
+describe('createDropAction — grabbing cursor (ADR-0019)', () => {
+  const grabbingStyle = () =>
+    document.getElementById('drop-action-grabbing-cursor')
+
+  // Isolate from any earlier test that activated a drag without releasing.
+  beforeEach(() => grabbingStyle()?.remove())
+
+  test('a live drag injects a global grabbing cursor that clears on release', () => {
+    const DA = createDropAction<Data>({ measure })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    expect(grabbingStyle()).toBeNull()
+    press(screen.getByRole('button'), ITEM_CENTER)
+    // Pressed but not yet activated (still pending): no global cursor.
+    expect(grabbingStyle()).toBeNull()
+
+    move(ZONE_CENTER) // crosses the threshold → the drag activates
+    expect(grabbingStyle()?.textContent).toContain('grabbing')
+
+    release(ZONE_CENTER)
+    // Released: the pointer is up, so grabbing clears at once.
+    expect(grabbingStyle()).toBeNull()
+  })
+
+  test('Escape (a Cancel) also clears the grabbing cursor', () => {
+    const DA = createDropAction<Data>({ measure })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    expect(grabbingStyle()).not.toBeNull()
+    pressEscape()
+    expect(grabbingStyle()).toBeNull()
+  })
+
+  test('unmounting the Item mid-drag still clears the cursor on release', () => {
+    // The cursor is tied to the pointer gesture (window listeners), not to the
+    // component tree: a release still reaches onUp even after the Item unmounts.
+    const DA = createDropAction<Data>({ measure })
+    const view = render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    expect(grabbingStyle()).not.toBeNull()
+
+    // The source Item unmounts mid-drag (e.g. an optimistic list change).
+    view.rerender(
+      <DA.Zone id="slot" onDrop={() => {}}>
+        slot
+      </DA.Zone>,
+    )
+    // The drag's window listeners survive, so releasing still clears the cursor.
+    release(ZONE_CENTER)
+    expect(grabbingStyle()).toBeNull()
+  })
+
+  test('grabCursor: false injects no global grabbing cursor', () => {
+    const DA = createDropAction<Data>({ measure, grabCursor: false })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    expect(grabbingStyle()).toBeNull()
+    release(ZONE_CENTER)
+  })
+})
