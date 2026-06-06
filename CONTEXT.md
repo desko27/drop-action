@@ -54,6 +54,22 @@ may live outside the Item's subtree (a toolbar, a header). The handle
 only triggers the drag; the Item is always what is measured and travels.
 _Avoid_: Grip, knob, gripper.
 
+**Grab anchor**:
+The point on the Overlay that sits under the pointer while a drag is live —
+the Overlay's relationship to the cursor. Distinct from the Drag handle
+(where the press lands on the page): the handle starts the drag, the grab
+anchor decides where the travelling Overlay hangs from the pointer. By
+default it holds the same *relative* position on the Overlay that the press
+had on the source (proportional), so when the Overlay matches the source the
+pointer stays exactly where it was pressed, and when the Overlay is smaller
+the pointer keeps the same fractional grip instead of falling outside it —
+the pointer "grabbing the void". Configurable per Drop Action and per Item:
+a fixed point (e.g. `center`), the source-absolute offset (`preserve`), or a
+function. Assumes the press lands within the source's rect (the realistic
+Drag handle, even a custom one, is an interior region); a spatially distant
+handle is out of scope.
+_Avoid_: Drag image offset, hotspot, pickup point, pivot.
+
 ### Drop resolution
 
 **Drop**:
@@ -129,10 +145,13 @@ _Avoid_: Constraint (that is the Activation constraint), transformer.
 ### Optional modules
 
 **Snap-back**:
-The Return animation: it brings the Overlay back to the Item's origin rect
+The Return animation: it eases the Overlay back to its home — the Overlay
+**centered on** the Item's origin rect (its live position at release) —
 whenever a drag ends without an Accept (a Reject, a No-drop, or a Cancel).
-Not part of the headless core — it ships as the opt-in subpath module
-`drop-action/snap-back`, built on the resolution state and origin rect the
+Centering, rather than aligning the top-left corners, keeps an Overlay of a
+different size from the source returning symmetrically into its slot. Not
+part of the headless core — it ships as the opt-in subpath module
+`drop-action/snap-back`, built on the resolution state and the home rect the
 core exposes.
 _Avoid_: Bounce-back, revert, reject animation (it is not Reject-only).
 

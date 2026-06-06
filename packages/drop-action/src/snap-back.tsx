@@ -33,8 +33,9 @@ import type {
 // origin rect and the Overlay's last transform. Snap-back animates a
 // *Return* — every outcome except 'accepted'. The instant a non-accept
 // resolution appears it mounts a short-lived ghost Overlay at the captured
-// transform and, on the next frame, eases it back to the origin rect
-// (transform -> 0). On an Accept there is nothing to return, so it does not
+// transform and, on the next frame, eases it back to its home rect — the
+// Overlay centered on the source's live rect (ADR-0022) — i.e. transform -> 0.
+// On an Accept there is nothing to return, so it does not
 // bounce — no inference and no dependence on whether a Dropping phase
 // happened to render, so even an async Accept stays put.
 
@@ -173,10 +174,10 @@ export function createSnapBack<Data>(
     // mounted across the render where Active first goes null but the kickoff
     // effect has not run yet, so the Overlay never blinks out.
     if (bounce.current) {
-      const { originRect, transform, item, outcome } = bounce.current
+      const { homeRect, transform, item, outcome } = bounce.current
       const atHome = phase === 'home'
-      const x = originRect.left + (atHome ? 0 : transform.x)
-      const y = originRect.top + (atHome ? 0 : transform.y)
+      const x = homeRect.left + (atHome ? 0 : transform.x)
+      const y = homeRect.top + (atHome ? 0 : transform.y)
       return {
         active: null,
         snapping: true,

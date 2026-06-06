@@ -5,6 +5,11 @@ engine each frame (via the `useOverlay()` primitive's `ref`), not through a
 React render, so the Overlay subtree no longer re-renders per frame. The portal,
 fixed + translate3d, and untouched-source decisions still hold._
 
+_Refined by ADR-0021: "starting over the Item's origin rect" becomes the
+**grab-anchored origin** — the Overlay hangs from the pointer at a configurable
+point (default `proportional`), so a small Overlay no longer leaves the pointer
+grabbing the void. The portal and compositor-only positioning are unchanged._
+
 Three decisions about how the Overlay renders:
 
 - **Portal.** The Overlay portals to `document.body` by default (a

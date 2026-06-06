@@ -354,9 +354,13 @@ describe('createDropAction — public API behaviour', () => {
     }
     const measureChip: Measure = ({ type }) =>
       type === 'zone' ? ZONE_RECT : type === 'overlay' ? CHIP_RECT : ITEM_RECT
+    // `grabAnchor: 'preserve'` keeps the chip anchored at the source top-left
+    // (ADR-0021), so this test isolates the ADR-0020 edge clamp from the new
+    // 'proportional' default (which would centre the chip on the grab point).
     const DA = createDropAction<Data>({
       measure: measureChip,
       modifiers: [restrictToWindowEdges],
+      grabAnchor: 'preserve',
     })
     render(
       <>

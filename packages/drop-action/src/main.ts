@@ -5,6 +5,7 @@ export {
   pointerWithin,
   rectIntersection,
 } from './createDropAction/collision'
+export { center } from './createDropAction/grab-anchor'
 export type {
   CollisionArgs,
   CollisionDetection,
@@ -31,6 +32,9 @@ export type {
   DropOutcome,
   DropStatus,
   DropVerdict,
+  GrabAnchor,
+  GrabAnchorArgs,
+  GrabAnchorPoint,
   ItemHandleProps,
   Measure,
   MeasureTarget,

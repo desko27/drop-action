@@ -4,6 +4,11 @@ _Extended by ADR-0020: the same "measured Overlay, not source" principle now
 also governs the modifier clamp (`restrictToWindowEdges`), via an `overlayRect`
 on `ModifierArgs`._
 
+_Refined by ADR-0021 and ADR-0022: the origin the Overlay anchors at is now the
+**grab-anchored origin** (configurable, default `proportional`), and the live
+re-base below targets the Overlay's **centered home**, not the source's
+top-left._
+
 Two refinements to how the rect collision detection tests against is built,
 both found dogfooding in ORION.
 

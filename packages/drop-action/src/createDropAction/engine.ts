@@ -16,6 +16,8 @@ import type {
   DraggedItem,
   DropOutcome,
   DropVerdict,
+  GrabAnchor,
+  GrabAnchorPoint,
   Measure,
   Modifier,
   Rect,
@@ -43,6 +45,9 @@ type EngineDeps<Data, Accept, Reject> = {
   shouldStart: ShouldStart
   // Whether to show the global grabbing cursor while a drag is live (ADR-0019).
   grabCursor: boolean
+  // The Drop Action's grab anchor (ADR-0021): where the travelling Overlay
+  // hangs from the pointer. An Item may override it; defaults to 'proportional'.
+  grabAnchor?: GrabAnchor
   // The shared handle on the rendered Overlay node (ADR-0017, ADR-0018).
   overlay: OverlayRegistry
   // The store's only writer (ADR-0018): emits a transition, never per frame.
@@ -94,6 +99,7 @@ export function createEngine<Data, Accept, Reject>({
   activationConstraint,
   shouldStart,
   grabCursor,
+  grabAnchor,
   overlay,
   commit,
 }: EngineDeps<Data, Accept, Reject>) {
@@ -119,9 +125,13 @@ export function createEngine<Data, Accept, Reject>({
     // ----- The real drag (after activation) -----------------------------
 
     const beginDrag = (activateX: number, activateY: number) => {
-      // Frozen at drag start: the source's origin rect anchors the Overlay,
-      // which is position:fixed and tracks the pointer regardless of scroll.
+      // Frozen at drag start: the source's origin rect, plus the resolved grab
+      // anchor (ADR-0021): per-Item override, else the Drop Action's, else
+      // 'proportional'. The Overlay is position:fixed and tracks the pointer
+      // regardless of scroll, hanging from the anchor (see resolveAnchoredOrigin).
       const originRect = measure({ node: item.node, id, type: 'item' })
+      const anchor: GrabAnchor =
+        item.grabAnchorRef.current ?? grabAnchor ?? 'proportional'
 
       const measureZones = () =>
         [...zones.entries()].map(([zoneId, zone]) => ({
@@ -165,6 +175,45 @@ export function createEngine<Data, Accept, Reject>({
         }
       }
 
+      // The Overlay's anchored origin (ADR-0021): the top-left it rests at
+      // (transform 0) so the resolved grab anchor sits under the press point —
+      // `grab - anchorOffset`. It replaces the source top-left as the origin
+      // every Overlay-positioning path reads, so render, collision and the
+      // modifier clamp all track the anchored Overlay. Recomputed only while the
+      // Overlay is unmeasured (the source-size fallback frame), then frozen once
+      // measured — so a user `grabAnchor` function is not called per frame (the
+      // engine measures the Overlay once, ADR-0017). With 'proportional' and an
+      // Overlay matching the source this equals the source top-left, so
+      // positioning is unchanged.
+      let anchoredOrigin: { left: number; top: number } | null = null
+      const resolveAnchoredOrigin = (): { left: number; top: number } => {
+        if (anchoredOrigin && overlaySize) return anchoredOrigin
+        const size = resolveOverlaySize()
+        // The source-absolute offset (what 'preserve' keeps) — also the
+        // numerator for the 'proportional' fraction.
+        let ox = startX - originRect.left
+        let oy = startY - originRect.top
+        if (anchor !== 'preserve') {
+          const frac: GrabAnchorPoint =
+            anchor === 'proportional'
+              ? {
+                  x: originRect.width ? ox / originRect.width : 0.5,
+                  y: originRect.height ? oy / originRect.height : 0.5,
+                }
+              : typeof anchor === 'function'
+                ? anchor({
+                    originRect,
+                    overlaySize: size,
+                    grab: { x: startX, y: startY },
+                  })
+                : anchor
+          ox = frac.x * size.width
+          oy = frac.y * size.height
+        }
+        anchoredOrigin = { left: startX - ox, top: startY - oy }
+        return anchoredOrigin
+      }
+
       // Run the modifier pipeline left-to-right, each modifier feeding the
       // next, starting from the raw pointer delta (ADR-0007). The delta is
       // measured from the original press, so the Overlay does not jump on
@@ -172,19 +221,20 @@ export function createEngine<Data, Accept, Reject>({
       // stay pure.
       const resolveTransform = (px: number, py: number): Transform => {
         const pointer = { x: px, y: py }
-        // The Overlay's footprint at rest (transform 0): the source's origin
-        // position with the measured Overlay size (ADR-0020). The modifier
+        // The Overlay's footprint at rest (transform 0): the anchored origin
+        // (ADR-0021) with the measured Overlay size (ADR-0020). The modifier
         // adds the transform it produces, so this is collision's rect minus
         // that not-yet-applied transform — a modifier clamps what the user
         // sees travel, not the invisible source.
         const { width, height } = resolveOverlaySize()
+        const origin = resolveAnchoredOrigin()
         const overlayRect: Rect = {
-          left: originRect.left,
-          top: originRect.top,
+          left: origin.left,
+          top: origin.top,
           width,
           height,
-          right: originRect.left + width,
-          bottom: originRect.top + height,
+          right: origin.left + width,
+          bottom: origin.top + height,
         }
         let next: Transform = { x: px - startX, y: py - startY }
         for (const modifier of modifiers) {
@@ -205,7 +255,8 @@ export function createEngine<Data, Accept, Reject>({
       // Exposed on the registry so a late-mounting node (the `useOverlay` ref
       // firing after the drag starts) positions itself on mount.
       const placeOverlay = (node: HTMLElement) => {
-        node.style.transform = `translate3d(${originRect.left + transform.x}px, ${originRect.top + transform.y}px, 0)`
+        const origin = resolveAnchoredOrigin()
+        node.style.transform = `translate3d(${origin.left + transform.x}px, ${origin.top + transform.y}px, 0)`
       }
       overlay.place = placeOverlay
 
@@ -214,8 +265,9 @@ export function createEngine<Data, Accept, Reject>({
       // user sees travel even when the Overlay differs in size from the source.
       const overlayRect = (): Rect => {
         const { width, height } = resolveOverlaySize()
-        const left = originRect.left + transform.x
-        const top = originRect.top + transform.y
+        const origin = resolveAnchoredOrigin()
+        const left = origin.left + transform.x
+        const top = origin.top + transform.y
         return {
           left,
           top,
@@ -261,26 +313,41 @@ export function createEngine<Data, Accept, Reject>({
         // Re-base the Return target to where the source sits NOW (ADR-0017): a
         // drag may have scrolled the page/list under the fixed Overlay, so the
         // frozen origin is stale. Re-measure the source (falling back to the
-        // frozen origin if it has unmounted or collapsed to a zero-area rect),
-        // then re-express the release transform against it — so the Overlay's
-        // release position is unchanged (`home + transform`) while the home a
-        // Return eases back to (`home`) is the source's live position.
+        // frozen origin if it has unmounted or collapsed to a zero-area rect).
         const reg = items.get(id)
         const measured = reg && measure({ node: reg.node, id, type: 'item' })
-        const home =
+        const source =
           measured && (measured.width > 0 || measured.height > 0)
             ? measured
             : originRect
+        // The Overlay's home (ADR-0022): its measured size centered on the
+        // source's live rect, so a size-mismatched Overlay returns to its slot,
+        // not the source's corner. Equals the source rect when the two match.
+        const { width, height } = resolveOverlaySize()
+        const left = source.left + (source.width - width) / 2
+        const top = source.top + (source.height - height) / 2
+        const homeRect: Rect = {
+          left,
+          top,
+          width,
+          height,
+          right: left + width,
+          bottom: top + height,
+        }
+        // Re-express the release transform against that home: the Overlay's
+        // release position (anchored origin + transform) is unchanged, so the
+        // Return eases from where it was released to the centered, live home.
+        const origin = resolveAnchoredOrigin()
         const rebased: Transform = {
-          x: originRect.left + transform.x - home.left,
-          y: originRect.top + transform.y - home.top,
+          x: origin.left + transform.x - left,
+          y: origin.top + transform.y - top,
         }
         commit({
           active: null,
           over: null,
           resolution: {
             outcome,
-            originRect: home,
+            homeRect,
             transform: rebased,
             item: { id, data: item.dataRef.current },
           },
