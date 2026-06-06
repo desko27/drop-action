@@ -76,6 +76,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
+      useOverlay: DA.useOverlay,
     })
 
     render(
@@ -119,6 +120,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
+      useOverlay: DA.useOverlay,
     })
 
     render(
@@ -160,6 +162,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
     const { useSnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
+      useOverlay: DA.useOverlay,
     })
 
     function Probe() {
@@ -198,6 +201,40 @@ describe('drop-action/snap-back — Reject bounce', () => {
     // Reject: the bounce is active, the captured Item still readable.
     expect(screen.getByTestId('state')).toHaveTextContent('snapping:card')
   })
+
+  test('the SnapBack overlay carries data-snapping only during the bounce', async () => {
+    const DA = createDropAction<Data>({ measure })
+    const { SnapBack } = createSnapBack({
+      useActive: DA.useActive,
+      useResolution: DA.useResolution,
+      useOverlay: DA.useOverlay,
+    })
+
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <SnapBack>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </SnapBack>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(EMPTY_POINT)
+    // Live drag: a synthetic/E2E retry loop must be able to tell this apart
+    // from the bounce — no data-snapping here.
+    expect(overlay()).not.toHaveAttribute('data-snapping')
+
+    // A No-drop Return: the ghost stays mounted and now carries data-snapping.
+    release(EMPTY_POINT)
+    await flush()
+    expect(overlay()).toHaveAttribute('data-snapping')
+  })
 })
 
 describe('drop-action/snap-back — every Return bounces', () => {
@@ -225,6 +262,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
+      useOverlay: DA.useOverlay,
     })
 
     render(
@@ -257,6 +295,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
+      useOverlay: DA.useOverlay,
     })
 
     render(
@@ -287,6 +326,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
+      useOverlay: DA.useOverlay,
     })
 
     render(
@@ -317,6 +357,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
     const { SnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
+      useOverlay: DA.useOverlay,
     })
 
     render(
@@ -346,6 +387,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
     const { useSnapBack } = createSnapBack({
       useActive: DA.useActive,
       useResolution: DA.useResolution,
+      useOverlay: DA.useOverlay,
     })
 
     function Probe() {

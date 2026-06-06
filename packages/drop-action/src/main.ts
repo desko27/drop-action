@@ -1,4 +1,5 @@
 export { createDropAction } from './createDropAction'
+export { defaultShouldStart } from './createDropAction/activation'
 export {
   closestCenter,
   pointerWithin,
@@ -35,8 +36,10 @@ export type {
   MeasureTarget,
   Modifier,
   ModifierArgs,
+  OverlayProps,
   PointerKind,
   Rect,
+  ShouldStart,
   Transform,
   UseItemOptions,
   ZoneDropHandler,

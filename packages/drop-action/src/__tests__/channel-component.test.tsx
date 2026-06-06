@@ -30,6 +30,7 @@ describe('createDropAction returns a channel component (ADR-0015)', () => {
       'useActive',
       'useResolution',
       'useOver',
+      'useOverlay',
     ] as const
     for (const member of members) expect(typeof DA[member]).toBe('function')
   })

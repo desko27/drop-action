@@ -1,5 +1,25 @@
 import type { ActivationConstraint, PointerKind } from './types.public'
 
+// Interactive origins the default Activation guard refuses to start a drag on
+// (ADR-0016), matched with `closest()` so a child of a control counts too. A
+// `<button>` is deliberately absent: a drag handle is often a button.
+const INTERACTIVE_ORIGIN =
+  'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
+
+// The default Activation guard (ADR-0016): an origin veto run on the initial
+// pointerdown. Refuses non-primary mouse buttons and presses that begin on
+// interactive content, so a click on a checkbox inside a whole-row Item — or a
+// right-click — never hijacks into a drag. Replace via
+// `createDropAction({ shouldStart })`; compose it (`(e) => defaultShouldStart(e)
+// && mine(e)`) to keep these guarantees.
+export const defaultShouldStart = (event: PointerEvent): boolean => {
+  // Primary button only. A bare synthetic pointerdown may omit `button`; treat
+  // a missing button as the primary one so it is not spuriously vetoed.
+  if ((event.button ?? 0) !== 0) return false
+  const target = event.target
+  return !(target instanceof Element && target.closest(INTERACTIVE_ORIGIN))
+}
+
 // The pointer-type-aware default (ADR-0012). Mouse and pen activate on a
 // small distance so a drag feels near-instant; touch waits out a short
 // delay within a tolerance so a quick swipe scrolls the list while a

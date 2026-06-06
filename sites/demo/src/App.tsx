@@ -13,6 +13,7 @@ const DA = createDropAction<CardData>()
 const { SnapBack } = createSnapBack({
   useActive: DA.useActive,
   useResolution: DA.useResolution,
+  useOverlay: DA.useOverlay,
 })
 
 // The accepting slot reads useOver to highlight itself while the Active Item

@@ -834,3 +834,218 @@ describe('createDropAction — async resolution, status, cancellation', () => {
     expect(screen.queryByTestId('overlay')).toBeNull()
   })
 })
+
+// The four findings fixed in this prerelease (ADR-0016, ADR-0017, ADR-0018).
+describe('createDropAction — Activation guard (ADR-0016)', () => {
+  test('a press on an interactive child does not start a drag; the rest of the Item does', () => {
+    const DA = createDropAction<Data>({ measure })
+    const onDrop = vi.fn()
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          <input data-testid="check" type="checkbox" />
+          <span data-testid="body">card</span>
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    // Pressing the checkbox inside the whole-Item handle never hijacks a drag.
+    press(screen.getByTestId('check'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+    expect(onDrop).not.toHaveBeenCalled()
+
+    // Pressing elsewhere in the Item starts a drag as usual.
+    press(screen.getByTestId('body'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+    expect(onDrop).toHaveBeenCalledTimes(1)
+  })
+
+  test('a custom shouldStart replaces the default veto', () => {
+    const DA = createDropAction<Data>({ measure, shouldStart: () => true })
+    const onDrop = vi.fn()
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          <input data-testid="check" type="checkbox" />
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    // `shouldStart: () => true` lets a drag begin even on the checkbox.
+    press(screen.getByTestId('check'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+    expect(onDrop).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('createDropAction — collision rects (ADR-0017)', () => {
+  test('collision is sized from the measured Overlay, not the source Item', () => {
+    // A tall 100×100 source, but a tiny 10×10 Overlay. The Zone sits just past
+    // the source's right edge: the big source rect would overlap it, the small
+    // Overlay does not — so the Drop must not fire.
+    const overlayMeasure: Measure = ({ type }) => {
+      if (type === 'overlay')
+        return { top: 0, left: 0, right: 10, bottom: 10, width: 10, height: 10 }
+      if (type === 'zone')
+        return {
+          top: 0,
+          left: 95,
+          right: 195,
+          bottom: 100,
+          width: 100,
+          height: 100,
+        }
+      return ITEM_RECT
+    }
+    const DA = createDropAction<Data>({ measure: overlayMeasure })
+    const onDrop = vi.fn()
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+      </>,
+    )
+
+    // Nudge 5px: the source (0..100) would still overlap the Zone (95..195),
+    // but the 10px Overlay (anchored at 5..15) does not.
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move({ x: ITEM_CENTER.x + 5, y: ITEM_CENTER.y })
+    release({ x: ITEM_CENTER.x + 5, y: ITEM_CENTER.y })
+    expect(onDrop).not.toHaveBeenCalled()
+  })
+
+  test('Zone rects are re-measured on scroll, so Over tracks a scrolled Zone', () => {
+    // The Zone starts far from the Overlay, then "scrolls" under it. A scroll
+    // event must re-measure and update Over with no pointer movement.
+    let zoneRect: Rect = {
+      top: 0,
+      left: 1000,
+      right: 1100,
+      bottom: 100,
+      width: 100,
+      height: 100,
+    }
+    const dynamicMeasure: Measure = ({ type }) =>
+      type === 'zone' ? zoneRect : ITEM_RECT
+    const DA = createDropAction<Data>({ measure: dynamicMeasure })
+    function Probe() {
+      const over = DA.useOver('slot')
+      return <div data-testid="over">{over ? 'over' : 'none'}</div>
+    }
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <Probe />
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    // The Overlay sits at (200,0); the Zone is far away at left:1000.
+    expect(screen.getByTestId('over')).toHaveTextContent('none')
+
+    // The Zone scrolls under the Overlay (its rect now starts at left:200).
+    zoneRect = {
+      top: 0,
+      left: 200,
+      right: 300,
+      bottom: 100,
+      width: 100,
+      height: 100,
+    }
+    fireEvent.scroll(window)
+    expect(screen.getByTestId('over')).toHaveTextContent('over')
+  })
+})
+
+describe('createDropAction — selective reads (ADR-0018)', () => {
+  test('an Over transition re-renders only the Zones whose membership flips', () => {
+    const ZONES: Record<string, Rect> = {
+      a: {
+        top: 0,
+        left: 200,
+        right: 300,
+        bottom: 100,
+        width: 100,
+        height: 100,
+      },
+      b: {
+        top: 0,
+        left: 400,
+        right: 500,
+        bottom: 100,
+        width: 100,
+        height: 100,
+      },
+      c: {
+        top: 0,
+        left: 600,
+        right: 700,
+        bottom: 100,
+        width: 100,
+        height: 100,
+      },
+    }
+    const routingMeasure: Measure = ({ id, type }) =>
+      type === 'zone' ? ZONES[id] : ITEM_RECT
+    const DA = createDropAction<Data>({ measure: routingMeasure })
+
+    const renders = { a: 0, b: 0, c: 0 }
+    function Probe({ id }: { id: 'a' | 'b' | 'c' }) {
+      DA.useOver(id)
+      renders[id]++
+      return null
+    }
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="a" onDrop={() => {}}>
+          a
+        </DA.Zone>
+        <DA.Zone id="b" onDrop={() => {}}>
+          b
+        </DA.Zone>
+        <DA.Zone id="c" onDrop={() => {}}>
+          c
+        </DA.Zone>
+        <Probe id="a" />
+        <Probe id="b" />
+        <Probe id="c" />
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move({ x: 250, y: 50 }) // Overlay over Zone 'a'
+    const cBefore = renders.c
+    const aBefore = renders.a
+
+    move({ x: 450, y: 50 }) // Over flips a -> b
+    // 'c' was never Over either side of the flip, so it must not re-render.
+    expect(renders.c).toBe(cBefore)
+    // 'a' lost Over, so it did re-render.
+    expect(renders.a).toBeGreaterThan(aBefore)
+  })
+})

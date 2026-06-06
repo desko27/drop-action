@@ -32,13 +32,14 @@ describe('SSR — inert server snapshot', () => {
     expect(html).not.toContain('overlay')
   })
 
-  test('getServerSnapshot returns a stable reference across calls', () => {
-    // useSyncExternalStore compares snapshots with Object.is and throws if
-    // a fresh value comes back each call. The inert snapshot must be one
-    // shared reference.
+  test('server reads are inert and document-free', () => {
+    // useSyncExternalStore compares snapshots with Object.is and throws if a
+    // fresh value comes back each call. Each server read returns a constant
+    // (null / false), so it is trivially stable and never touches the DOM.
     const store = createStore<void>()
-    expect(
-      Object.is(store.getServerSnapshot(), store.getServerSnapshot()),
-    ).toBe(true)
+    expect(store.getServerActive()).toBeNull()
+    expect(store.getServerResolution()).toBeNull()
+    expect(store.getServerOverItem()).toBeNull()
+    expect(store.getServerIsActiveId()).toBe(false)
   })
 })

@@ -5,8 +5,10 @@ import {
 } from './activation'
 import type { CollisionDetection } from './collision'
 import type {
-  DropActionState,
+  ActiveSnapshot,
   ItemRegistration,
+  OverlayRegistry,
+  Resolution,
   ZoneRegistration,
 } from './types.private'
 import type {
@@ -17,8 +19,15 @@ import type {
   Measure,
   Modifier,
   Rect,
+  ShouldStart,
   Transform,
 } from './types.public'
+
+type Commit<Data> = (next: {
+  active?: ActiveSnapshot<Data> | null
+  over?: string | null
+  resolution?: Resolution<Data> | null
+}) => void
 
 type EngineDeps<Data, Accept, Reject> = {
   items: Map<string, ItemRegistration<Data, Accept, Reject>>
@@ -29,31 +38,28 @@ type EngineDeps<Data, Accept, Reject> = {
   modifiers: Modifier[]
   collisionDetection: CollisionDetection
   activationConstraint?: ActivationConstraint
-  setState: (state: DropActionState<Data>) => void
+  // The Activation guard (ADR-0016): resolved (default or custom) in the
+  // factory; vetoes ineligible presses before the pending phase.
+  shouldStart: ShouldStart
+  // The shared handle on the rendered Overlay node (ADR-0017, ADR-0018).
+  overlay: OverlayRegistry
+  // The store's only writer (ADR-0018): emits a transition, never per frame.
+  commit: Commit<Data>
 }
-
-const translate = (rect: Rect, x: number, y: number): Rect => ({
-  top: rect.top + y,
-  bottom: rect.bottom + y,
-  left: rect.left + x,
-  right: rect.right + x,
-  width: rect.width,
-  height: rect.height,
-})
 
 // The custom Pointer Events engine (ADR-0001). A single unified stream —
 // pointerdown (here, via the handle) → pointermove with setPointerCapture
 // → pointerup — throttled to animation frames.
 //
-// A press does not become a drag immediately (ADR-0012). pointerdown opens
-// a *pending activation* phase that watches movement (and, for touch, a
-// hold timer) through the pure `evaluateActivation`. Only once the
-// constraint is crossed do we measure, capture the pointer, and publish the
-// Active state — the real drag below begins from the original press point.
-// During the pending phase we never preventDefault and never set
-// `touch-action: none`, so a quick touch swipe is left to the browser to
-// scroll; `touch-action: none` is applied (in index.tsx, keyed off the
-// Active state) only once a drag is truly under way.
+// A press does not become a drag immediately. First it must clear the
+// Activation guard (ADR-0016) — an origin veto — then cross the Activation
+// constraint (ADR-0012). pointerdown opens a *pending activation* phase that
+// watches movement (and, for touch, a hold timer) through the pure
+// `evaluateActivation`. Only once the constraint is crossed do we measure,
+// capture the pointer, and publish the Active state. During the pending phase
+// we never preventDefault and never set `touch-action: none`, so a quick touch
+// swipe is left to the browser to scroll; `touch-action: none` is applied (in
+// index.tsx, keyed off the Active state) only once a drag is truly under way.
 export function createEngine<Data, Accept, Reject>({
   items,
   zones,
@@ -61,11 +67,18 @@ export function createEngine<Data, Accept, Reject>({
   modifiers,
   collisionDetection,
   activationConstraint,
-  setState,
+  shouldStart,
+  overlay,
+  commit,
 }: EngineDeps<Data, Accept, Reject>) {
   const constraint = resolveActivationConstraint(activationConstraint)
 
   const startDrag = (id: string, event: PointerEvent) => {
+    // Activation guard (ADR-0016): an ineligible press (interactive origin,
+    // non-primary button) never enters the pending phase — and, since we never
+    // preventDefault, the browser handles the click/checkbox normally.
+    if (!shouldStart(event)) return
+
     const item = items.get(id)
     if (!item) return
 
@@ -80,13 +93,28 @@ export function createEngine<Data, Accept, Reject>({
     // ----- The real drag (after activation) -----------------------------
 
     const beginDrag = (activateX: number, activateY: number) => {
+      // Frozen at drag start: the source's origin rect anchors the Overlay,
+      // which is position:fixed and tracks the pointer regardless of scroll.
       const originRect = measure({ node: item.node, id, type: 'item' })
-      // Snapshot every Zone rect once at drag start; collisions recompute
-      // against this snapshot each frame (ADR-0006).
-      const zoneRects = [...zones.entries()].map(([zoneId, zone]) => ({
-        id: zoneId,
-        rect: measure({ node: zone.node, id: zoneId, type: 'zone' }),
-      }))
+
+      const measureZones = () =>
+        [...zones.entries()].map(([zoneId, zone]) => ({
+          id: zoneId,
+          rect: measure({ node: zone.node, id: zoneId, type: 'zone' }),
+        }))
+
+      // Zone rects are re-measured during the drag (ADR-0017), so this is a
+      // mutable snapshot, refreshed on scroll/resize below.
+      let zoneRects = measureZones()
+      // The Overlay's own size, measured once when its node is first available
+      // (ADR-0017); until then, fall back to the source size.
+      let overlaySize: { width: number; height: number } | null = null
+      let latestX = activateX
+      let latestY = activateY
+      let transform: Transform = { x: 0, y: 0 }
+      let over: string | null = null
+      let frame: number | null = null
+      let remeasureFrame: number | null = null
 
       // Route subsequent pointer events to the captured element so the drag
       // survives the pointer leaving the handle. Best-effort: not every
@@ -95,70 +123,91 @@ export function createEngine<Data, Accept, Reject>({
         item.node.setPointerCapture(pointerId)
       } catch {}
 
-      let latestX = activateX
-      let latestY = activateY
-      let frame: number | null = null
-
       // Run the modifier pipeline left-to-right, each modifier feeding the
       // next, starting from the raw pointer delta (ADR-0007). The delta is
       // measured from the original press, so the Overlay does not jump on
-      // activation. The result is the Overlay transform — used for BOTH the
-      // published transform and the rect collision tests against, so Over
-      // always matches the visibly constrained Overlay. Window dims are read
-      // here and injected so the built-ins stay pure.
+      // activation. Window dims are read here and injected so the built-ins
+      // stay pure.
       const resolveTransform = (px: number, py: number): Transform => {
         const pointer = { x: px, y: py }
-        let transform: Transform = { x: px - startX, y: py - startY }
+        let next: Transform = { x: px - startX, y: py - startY }
         for (const modifier of modifiers) {
-          transform = modifier({
-            transform,
+          next = modifier({
+            transform: next,
             originRect,
             pointer,
             windowWidth: window.innerWidth,
             windowHeight: window.innerHeight,
           })
         }
-        return transform
+        return next
       }
 
-      // Collision runs against the post-modifier Overlay rect, not the raw
-      // pointer (ADR-0007), so a constrained Overlay only registers Over
-      // where it can visually reach. The configured detector also gets the
-      // live pointer (needed by `pointerWithin`) — ADR-0006.
-      const overAt = (px: number, py: number, transform: Transform) =>
+      // Move the Overlay node imperatively (ADR-0018): origin + the current
+      // post-modifier transform, written straight to the node — never via a
+      // React render, so the Overlay subtree does not re-render per frame.
+      // Exposed on the registry so a late-mounting node (the `useOverlay` ref
+      // firing after the drag starts) positions itself on mount.
+      const placeOverlay = (node: HTMLElement) => {
+        node.style.transform = `translate3d(${originRect.left + transform.x}px, ${originRect.top + transform.y}px, 0)`
+      }
+      overlay.place = placeOverlay
+
+      // The Overlay rect collision tests against (ADR-0017): the *measured*
+      // Overlay size anchored at origin + transform, so Over matches what the
+      // user sees travel even when the Overlay differs in size from the source.
+      const overlayRect = (): Rect => {
+        if (!overlaySize && overlay.node) {
+          const r = measure({ node: overlay.node, id, type: 'overlay' })
+          overlaySize = { width: r.width, height: r.height }
+        }
+        const width = overlaySize ? overlaySize.width : originRect.width
+        const height = overlaySize ? overlaySize.height : originRect.height
+        const left = originRect.left + transform.x
+        const top = originRect.top + transform.y
+        return {
+          left,
+          top,
+          width,
+          height,
+          right: left + width,
+          bottom: top + height,
+        }
+      }
+
+      // Collision runs against the post-modifier Overlay rect, plus the live
+      // pointer needed by `pointerWithin` (ADR-0006, ADR-0007).
+      const overAt = (px: number, py: number): string | null =>
         collisionDetection({
           pointer: { x: px, y: py },
-          overlayRect: translate(originRect, transform.x, transform.y),
+          overlayRect: overlayRect(),
           zones: zoneRects,
         })
 
-      const publish = (
-        px: number,
-        py: number,
-        status: 'dragging' | 'dropping',
-      ) => {
-        const transform = resolveTransform(px, py)
-        setState({
-          active: {
-            id,
-            data: item.dataRef.current,
-            status,
-            originRect,
-            transform,
-          },
-          over: overAt(px, py, transform),
-          // No resolution while a drag is live; publishing 'dragging' at the
-          // next drag's start is also what clears the prior resolution.
-          resolution: null,
-        })
+      // Recompute Over and publish ONLY when it changes (ADR-0018): the
+      // high-frequency transform never enters the store, so consumers re-render
+      // on Over transitions, not per frame.
+      const syncOver = () => {
+        const next = overAt(latestX, latestY)
+        if (next !== over) {
+          over = next
+          commit({ over })
+        }
       }
+
+      const draggingActive = (): ActiveSnapshot<Data> => ({
+        id,
+        data: item.dataRef.current,
+        status: 'dragging',
+        originRect,
+      })
 
       // End the drag on a terminal outcome (ADR-0013): clear Active and Over
       // and publish the resolution in the SAME emit, so one render sees
       // `active === null` alongside the outcome. The resolution then lingers
-      // until the next drag's first `publish` overwrites it.
-      const resolve = (outcome: DropOutcome, transform: Transform) => {
-        setState({
+      // until the next drag's first commit overwrites it.
+      const resolve = (outcome: DropOutcome) => {
+        commit({
           active: null,
           over: null,
           resolution: {
@@ -168,13 +217,14 @@ export function createEngine<Data, Accept, Reject>({
             item: { id, data: item.dataRef.current },
           },
         })
+        overlay.place = null
       }
-
-      publish(activateX, activateY, 'dragging')
 
       const flush = () => {
         frame = null
-        publish(latestX, latestY, 'dragging')
+        transform = resolveTransform(latestX, latestY)
+        if (overlay.node) placeOverlay(overlay.node)
+        syncOver()
       }
 
       const onMove = (e: PointerEvent) => {
@@ -188,6 +238,23 @@ export function createEngine<Data, Accept, Reject>({
         if (frame === null) frame = requestAnimationFrame(flush)
       }
 
+      // Zones move in viewport coords only on scroll/resize/layout-change —
+      // never on pointer move — so re-measuring is event-driven and
+      // rAF-throttled, not per frame (ADR-0017). Capture-phase scroll catches
+      // nested scroll containers.
+      const remeasure = () => {
+        zoneRects = measureZones()
+        syncOver()
+      }
+      const onScrollResize = () => {
+        if (remeasureFrame === null) {
+          remeasureFrame = requestAnimationFrame(() => {
+            remeasureFrame = null
+            remeasure()
+          })
+        }
+      }
+
       // Tear down every listener and any pending frame. Called on every exit
       // path — resolution and cancellation alike — so nothing leaks.
       const cleanup = () => {
@@ -195,7 +262,10 @@ export function createEngine<Data, Accept, Reject>({
         window.removeEventListener('pointerup', onUp)
         window.removeEventListener('pointercancel', onCancel)
         window.removeEventListener('keydown', onKeyDown)
+        window.removeEventListener('scroll', onScrollResize, true)
+        window.removeEventListener('resize', onScrollResize)
         if (frame !== null) cancelAnimationFrame(frame)
+        if (remeasureFrame !== null) cancelAnimationFrame(remeasureFrame)
       }
 
       const onUp = (e: PointerEvent) => {
@@ -205,21 +275,33 @@ export function createEngine<Data, Accept, Reject>({
         // Resolve against the final pointer position, regardless of whether a
         // throttled frame had a chance to fire. The same post-modifier
         // transform that drives the Overlay drives this resolution.
-        const transform = resolveTransform(e.clientX, e.clientY)
-        const overId = overAt(e.clientX, e.clientY, transform)
+        latestX = e.clientX
+        latestY = e.clientY
+        transform = resolveTransform(e.clientX, e.clientY)
+        if (overlay.node) placeOverlay(overlay.node)
+        const overId = overAt(e.clientX, e.clientY)
         const dragged: DraggedItem<Data> = { id, data: item.dataRef.current }
 
         // Released over nothing — a No-drop (CONTEXT.md): no Zone, so no Drop
         // and no Dropping phase. It is a Return, not a Reject.
         if (overId === null) {
-          resolve('no-drop', transform)
+          resolve('no-drop')
           return
         }
 
         // Enter the Dropping phase: the Overlay persists (status 'dropping',
         // origin rect and over kept) across the async gap between release and
         // resolution (ADR-0004). Collision is frozen at the release position.
-        publish(e.clientX, e.clientY, 'dropping')
+        over = overId
+        commit({
+          active: {
+            id,
+            data: item.dataRef.current,
+            status: 'dropping',
+            originRect,
+          },
+          over: overId,
+        })
 
         // 1 Zone = 1 onDrop (ADR-0014): a single handler decides; the Item
         // reacts (ADR-0003). `accept` / `reject` each settle the Drop once —
@@ -232,13 +314,13 @@ export function createEngine<Data, Accept, Reject>({
           if (settled) return
           settled = true
           item.onAcceptRef.current?.(dragged, payload)
-          resolve('accepted', transform)
+          resolve('accepted')
         }
         const reject = (payload: Reject) => {
           if (settled) return
           settled = true
           item.onRejectRef.current?.(dragged, payload)
-          resolve('rejected', transform)
+          resolve('rejected')
         }
         const verdict: DropVerdict<Accept, Reject> = { accept, reject }
 
@@ -249,7 +331,7 @@ export function createEngine<Data, Accept, Reject>({
         Promise.resolve(result).then(() => {
           if (settled) return
           settled = true
-          resolve('rejected', transform)
+          resolve('rejected')
         })
       }
 
@@ -259,17 +341,27 @@ export function createEngine<Data, Accept, Reject>({
       const onCancel = (e?: PointerEvent) => {
         if (e && e.pointerId !== pointerId) return
         cleanup()
-        resolve('cancelled', resolveTransform(latestX, latestY))
+        transform = resolveTransform(latestX, latestY)
+        resolve('cancelled')
       }
 
       const onKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') onCancel()
       }
 
+      // Initial publish: the drag begins from the original press point, so the
+      // Overlay does not jump on activation.
+      transform = resolveTransform(activateX, activateY)
+      over = overAt(activateX, activateY)
+      commit({ active: draggingActive(), over, resolution: null })
+      if (overlay.node) placeOverlay(overlay.node)
+
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
       window.addEventListener('pointercancel', onCancel)
       window.addEventListener('keydown', onKeyDown)
+      window.addEventListener('scroll', onScrollResize, true)
+      window.addEventListener('resize', onScrollResize)
     }
 
     // ----- Pending activation phase (no drag yet) -----------------------

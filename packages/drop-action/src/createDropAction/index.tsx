@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { defaultShouldStart } from './activation'
 import { rectIntersection } from './collision'
 import { createEngine } from './engine'
 import { defaultMeasure } from './measure'
@@ -16,6 +17,7 @@ import { createStore } from './store'
 import type {
   ActiveSnapshot,
   ItemRegistration,
+  OverlayRegistry,
   Resolution,
   ZoneRegistration,
 } from './types.private'
@@ -24,6 +26,7 @@ import type {
   DraggedItem,
   DragHandleProps,
   ItemHandleProps,
+  OverlayProps,
   UseItemOptions,
   ZoneDropHandler,
 } from './types.public'
@@ -41,6 +44,17 @@ const HANDLE_STYLE: CSSProperties = {
 const DRAGGING_HANDLE_STYLE: CSSProperties = {
   ...HANDLE_STYLE,
   touchAction: 'none',
+}
+
+// The Overlay's base style (ADR-0010): portalled, fixed at (0,0), inert to the
+// pointer. The `translate3d` is written imperatively by the engine on the
+// node's ref (ADR-0018), so it is deliberately absent here — putting it in this
+// React-managed style would fight the per-frame imperative writes.
+const OVERLAY_STYLE: CSSProperties = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  pointerEvents: 'none',
 }
 
 type ItemProps<Data, Accept = void, Reject = void> = {
@@ -88,6 +102,10 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   // Default collision detection is `rectIntersection` (ADR-0006); a custom
   // detector or another built-in can be supplied per Drop Action.
   const collisionDetection = options.collisionDetection ?? rectIntersection
+  // Default Activation guard refuses interactive-origin / non-primary presses
+  // (ADR-0016); a custom `shouldStart` replaces it (compose `defaultShouldStart`
+  // to keep the defaults).
+  const shouldStart = options.shouldStart ?? defaultShouldStart
   const store = createStore<Data>()
 
   // Item ids and Zone ids occupy separate id spaces — two maps — so an
@@ -97,6 +115,10 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   const items = new Map<string, ItemRegistration<Data, Accept, Reject>>()
   const zones = new Map<string, ZoneRegistration<Data, Accept, Reject>>()
 
+  // The shared handle on the rendered Overlay node (ADR-0017, ADR-0018): the
+  // `useOverlay` ref sets `node`; the engine sets `place` while a drag is live.
+  const overlay: OverlayRegistry = { node: null, place: null }
+
   const engine = createEngine<Data, Accept, Reject>({
     items,
     zones,
@@ -104,20 +126,21 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     modifiers,
     collisionDetection,
     activationConstraint: options.activationConstraint,
-    setState: store.setState,
+    shouldStart,
+    overlay,
+    commit: store.commit,
   })
 
-  const useDropActionState = () =>
-    useSyncExternalStore(
-      store.subscribe,
-      store.getSnapshot,
-      store.getServerSnapshot,
-    )
-
   // ----- Hooks (the primitive; components below are sugar — ADR-0008) ----
+  // Each read subscribes with a stable/primitive snapshot so a consumer
+  // re-renders only when its own slice changes (ADR-0018).
 
   function useActive(): ActiveSnapshot<Data> | null {
-    return useDropActionState().active
+    return useSyncExternalStore(
+      store.subscribe,
+      store.getActive,
+      store.getServerActive,
+    )
   }
 
   // How the most recent drag ended (ADR-0013), or null before any drag has
@@ -126,16 +149,48 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   // after `useActive` has already gone null. `outcome === 'accepted'` is the
   // only non-Return ending.
   function useResolution(): Resolution<Data> | null {
-    return useDropActionState().resolution
+    return useSyncExternalStore(
+      store.subscribe,
+      store.getResolution,
+      store.getServerResolution,
+    )
   }
 
   // The Active { id, data } while `zoneId` is the Over Zone, else null. At
   // most one Zone is Over at a time (CONTEXT.md — Over), so this is truthy
-  // for exactly one Zone during a drag.
+  // for exactly one Zone during a drag. The store returns a stable reference,
+  // so only the Zones whose membership flips re-render on an Over change.
   function useOver(zoneId: string): DraggedItem<Data> | null {
-    const { active, over } = useDropActionState()
-    if (!active || over !== zoneId) return null
-    return { id: active.id, data: active.data }
+    const getSnapshot = useCallback(() => store.getOverItem(zoneId), [zoneId])
+    return useSyncExternalStore(
+      store.subscribe,
+      getSnapshot,
+      store.getServerOverItem,
+    )
+  }
+
+  // Whether `id` is the Active Item — a boolean, so an Item re-renders only
+  // when its own dragging state flips (ADR-0018).
+  function useIsDragging(id: string): boolean {
+    const getSnapshot = useCallback(() => store.isActiveId(id), [id])
+    return useSyncExternalStore(
+      store.subscribe,
+      getSnapshot,
+      store.getServerIsActiveId,
+    )
+  }
+
+  // The Overlay primitive (ADR-0018): spread `ref` + `style` onto the Overlay
+  // element. The engine measures the node for collision (ADR-0017) and moves it
+  // imperatively each frame. `<Active>` / `<SnapBack>` are sugar over this; a
+  // headless consumer can render their own Overlay element with it.
+  function useOverlay(): OverlayProps {
+    const ref = useCallback((node: HTMLElement | null) => {
+      overlay.node = node
+      // Position a node that mounts after the drag has already started.
+      if (node && overlay.place) overlay.place(node)
+    }, [])
+    return { ref, style: OVERLAY_STYLE }
   }
 
   // The Item is always what is measured and travels. `dragHandleProps` is
@@ -171,7 +226,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
       [id],
     )
 
-    const isDragging = useDropActionState().active?.id === id
+    const isDragging = useIsDragging(id)
 
     // Accessibility defaults baked into the handle (ADR-0011). With a
     // custom handle the Item itself never triggers, so it carries no
@@ -201,7 +256,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
       (event: ReactPointerEvent) => engine.startDrag(id, event.nativeEvent),
       [id],
     )
-    const isDragging = useDropActionState().active?.id === id
+    const isDragging = useIsDragging(id)
     return {
       onPointerDown,
       role: 'button',
@@ -284,27 +339,17 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   }
 
   // The Overlay: portalled to document.body, position: fixed, moved with a
-  // translate3d that starts over the Item's origin rect and follows the
-  // pointer (ADR-0010). On the server `useActive` is inert (null), so this
-  // returns before any document access — SSR-safe.
+  // translate3d the engine writes imperatively on the `useOverlay` ref each
+  // frame (ADR-0010, ADR-0018) — `<Active>` is sugar over that primitive
+  // (ADR-0008). On the server `useActive` is inert (null), so this returns
+  // before any document access — SSR-safe.
   function Active({ children, className, container }: ActiveProps<Data>) {
     const active = useActive()
+    const { ref, style } = useOverlay()
     if (!active) return null
 
-    const x = active.originRect.left + active.transform.x
-    const y = active.originRect.top + active.transform.y
-
     return createPortal(
-      <div
-        className={className}
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          transform: `translate3d(${x}px, ${y}px, 0)`,
-          pointerEvents: 'none',
-        }}
-      >
+      <div ref={ref} className={className} style={style}>
         {children({ id: active.id, data: active.data })}
       </div>,
       container ?? document.body,
@@ -339,5 +384,6 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     useActive,
     useResolution,
     useOver,
+    useOverlay,
   })
 }

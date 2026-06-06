@@ -151,13 +151,27 @@ _Avoid_: a11y module (bare), sensor.
 
 ### Input
 
+**Activation guard**:
+The eligibility check run on the initial pointer press — before the
+pending-activation phase — deciding whether a press may become a drag at
+all, from what it landed on and which button. Configured per Drop Action
+(no per-Item override), with a default that refuses presses originating on
+interactive content (form controls, editable text) and non-primary
+buttons, so a click on a checkbox inside a whole-row Item never hijacks
+into a drag. Distinct from the Activation constraint: the guard asks "is
+this press eligible?" at press time; the constraint asks "did the gesture
+cross the distance/delay threshold?" once eligible. A press the guard
+refuses never enters the pending phase.
+_Avoid_: Sensor, CustomPointerSensor, filter, shouldHandleEvent.
+
 **Activation constraint**:
 The threshold — movement distance and/or press delay — a pointer press
 must cross before it becomes a drag, so clicks, taps and text selection
 inside an Item are not hijacked. Configured once per Drop Action (no
 per-Item override). Its default is pointer-type-aware: a small distance
 for mouse/pen, a delay plus tolerance for touch, so touch lists stay
-scrollable.
+scrollable. Runs only after the Activation guard has let the press
+through.
 _Avoid_: Threshold (bare), tolerance, sensor delay.
 
 ## Relationships
