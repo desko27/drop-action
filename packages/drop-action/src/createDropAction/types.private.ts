@@ -24,10 +24,15 @@ export type ActiveSnapshot<Data> = {
 
 // The terminal snapshot the core publishes the instant a drag ends
 // (ADR-0013), read with `useResolution()`. Emitted atomically as `active`
-// becomes null and kept until the next drag starts. `transform` is the
-// Overlay delta at the end — the release point for a Drop or No-drop, the
-// live position for a Cancel — so a Return animation can ease from there
-// back to `originRect`.
+// becomes null and kept until the next drag starts. `originRect` is the
+// source's rect re-measured at release — its live home, so a Return that
+// scrolled the page under the fixed Overlay still eases back to where the
+// source now sits, not its drag-start position (ADR-0017). `transform` is
+// the Overlay delta against that home — the release point for a Drop or
+// No-drop, the live position for a Cancel — so a Return animation eases from
+// `originRect + transform` (the Overlay's release position) back to
+// `originRect`. The invariant holds: those two endpoints are unchanged by the
+// re-base; only the frame they are expressed in is the source's live one.
 export type Resolution<Data> = {
   outcome: DropOutcome
   originRect: Rect

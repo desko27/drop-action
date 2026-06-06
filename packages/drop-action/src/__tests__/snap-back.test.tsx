@@ -382,6 +382,55 @@ describe('drop-action/snap-back — every Return bounces', () => {
     expectBouncedHome()
   })
 
+  test('re-bases the Return to the source re-measured at release (ADR-0017)', async () => {
+    // The source "scrolls" up 40px during the drag: its measured rect changes
+    // between drag start and release. The Return must ease to the NEW source
+    // position, not the frozen drag-start one.
+    let itemTop = 0
+    const scrollMeasure: Measure = ({ type }) =>
+      type === 'zone'
+        ? ZONE_RECT
+        : {
+            top: itemTop,
+            left: 0,
+            right: 100,
+            bottom: itemTop + 100,
+            width: 100,
+            height: 100,
+          }
+    const DA = createDropAction<Data>({ measure: scrollMeasure })
+    const { SnapBack } = createSnapBack({
+      useActive: DA.useActive,
+      useResolution: DA.useResolution,
+      useOverlay: DA.useOverlay,
+    })
+
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <SnapBack>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </SnapBack>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    move(EMPTY_POINT)
+    // The source scrolls up 40px before the release lands (a No-drop Return).
+    itemTop = -40
+    release(EMPTY_POINT)
+    await flush()
+
+    // The ghost eases home to the re-measured origin (top -40), not the frozen
+    // drag-start 0 — without the re-base this would be translate3d(0px, 0px, 0).
+    expect(overlay()?.style.transform).toBe('translate3d(0px, -40px, 0)')
+  })
+
   test('useSnapBack exposes the Return outcome so consumers can vary treatment', async () => {
     const DA = createDropAction<Data>({ measure })
     const { useSnapBack } = createSnapBack({

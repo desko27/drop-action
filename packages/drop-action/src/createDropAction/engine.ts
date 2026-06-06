@@ -207,13 +207,30 @@ export function createEngine<Data, Accept, Reject>({
       // `active === null` alongside the outcome. The resolution then lingers
       // until the next drag's first commit overwrites it.
       const resolve = (outcome: DropOutcome) => {
+        // Re-base the Return target to where the source sits NOW (ADR-0017): a
+        // drag may have scrolled the page/list under the fixed Overlay, so the
+        // frozen origin is stale. Re-measure the source (falling back to the
+        // frozen origin if it has unmounted or collapsed to a zero-area rect),
+        // then re-express the release transform against it — so the Overlay's
+        // release position is unchanged (`home + transform`) while the home a
+        // Return eases back to (`home`) is the source's live position.
+        const reg = items.get(id)
+        const measured = reg && measure({ node: reg.node, id, type: 'item' })
+        const home =
+          measured && (measured.width > 0 || measured.height > 0)
+            ? measured
+            : originRect
+        const rebased: Transform = {
+          x: originRect.left + transform.x - home.left,
+          y: originRect.top + transform.y - home.top,
+        }
         commit({
           active: null,
           over: null,
           resolution: {
             outcome,
-            originRect,
-            transform,
+            originRect: home,
+            transform: rebased,
             item: { id, data: item.dataRef.current },
           },
         })
