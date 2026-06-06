@@ -102,12 +102,17 @@ export type Transform = { x: number; y: number }
 
 // The context a Modifier reasons over. `transform` is the proposed delta
 // (the previous modifier's output, or the raw pointer delta for the
-// first); `originRect` is the source Item's rect at drag start. The
-// pointer position and window dims are injected by the engine so built-ins
-// stay pure and testable (no `window` reads inside a modifier).
+// first); `overlayRect` is the Overlay's footprint *at rest* — the source's
+// origin position with the measured Overlay size, falling back to the
+// source size until the Overlay mounts (ADR-0020). It is the same Overlay
+// rect collision tests against, minus the transform the modifier is about
+// to produce, so a modifier constrains what the user sees travel, not the
+// invisible source. The pointer position and window dims are injected by
+// the engine so built-ins stay pure and testable (no `window` reads inside
+// a modifier).
 export type ModifierArgs = {
   transform: Transform
-  originRect: Rect
+  overlayRect: Rect
   pointer: { x: number; y: number }
   windowWidth: number
   windowHeight: number

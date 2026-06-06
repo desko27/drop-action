@@ -1,6 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createDropAction, restrictToVerticalAxis, snapToGrid } from '../main'
+import {
+  createDropAction,
+  restrictToVerticalAxis,
+  restrictToWindowEdges,
+  snapToGrid,
+} from '../main'
 import type { DraggedItem, Measure, Rect, ZoneDropHandler } from '../main'
 
 type Data = { label: string }
@@ -333,6 +338,49 @@ describe('createDropAction — public API behaviour', () => {
 
     const overlay = screen.getByTestId('overlay').parentElement
     expect(overlay?.style.transform).toBe('translate3d(50px, 50px, 0)')
+  })
+
+  test('restrictToWindowEdges clamps against the measured Overlay size, not the source (ADR-0020)', () => {
+    // A compact 40x40 chip Overlay over a 100x100 source. The edge clamp must
+    // follow the *visible* chip: its trailing edge is 60px shorter, so it may
+    // travel 60px further right than the source footprint would have allowed.
+    const CHIP_RECT: Rect = {
+      top: 0,
+      left: 0,
+      right: 40,
+      bottom: 40,
+      width: 40,
+      height: 40,
+    }
+    const measureChip: Measure = ({ type }) =>
+      type === 'zone' ? ZONE_RECT : type === 'overlay' ? CHIP_RECT : ITEM_RECT
+    const DA = createDropAction<Data>({
+      measure: measureChip,
+      modifiers: [restrictToWindowEdges],
+    })
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    // First move activates the drag and mounts the Active Overlay so its node
+    // can be measured; the second move (with the Overlay now measured) shoves
+    // it far past the right edge to trigger the clamp.
+    move({ x: ITEM_CENTER.x + 20, y: ITEM_CENTER.y })
+    move({ x: window.innerWidth + 1000, y: ITEM_CENTER.y })
+
+    // Clamped to windowWidth - chipWidth(40), not windowWidth - sourceWidth(100).
+    const overlay = screen.getByTestId('overlay').parentElement
+    expect(overlay?.style.transform).toBe(
+      `translate3d(${window.innerWidth - 40}px, 0px, 0)`,
+    )
   })
 
   test('useActive reflects the Active Item (id, data, status, originRect) during a drag and is null otherwise', async () => {
