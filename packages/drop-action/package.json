@@ -1,6 +1,6 @@
 {
   "name": "drop-action",
-  "version": "1.0.0-next.5",
+  "version": "1.0.0-next.6",
   "description": "Zero-dependency, headless drag-and-drop primitives for React",
   "repository": {
     "type": "git",
