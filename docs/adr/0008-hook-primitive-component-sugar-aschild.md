@@ -24,6 +24,17 @@ whose tag is chosen with `as` (default `'div'`).
   verbose for the common case.
 - **Hooks only, no components** — rejected. It loses the ergonomic JSX
   the original work API is built around.
+- **A tree-shakeable composition helper** (e.g. an exported `composeRefs`)
+  — deferred, not adopted. The one case where the hook is genuinely more
+  awkward than `asChild` is composing the hook's `ref`/handlers with a
+  `ref` or `onPointerDown` the consumer's element already carries — the
+  merge `asChild` used to absorb. But that merge machinery *is* the ~225 B
+  `asChild` cost. Re-adding `asChild` taxes every consumer (it is a branch
+  inside the always-imported `Item`/`Zone`, not a separate import, so it
+  cannot be tree-shaken). A small opt-in helper instead charges only the
+  consumers who import it — the same principle as the opt-in subpath
+  modules (ADR-0004). Should the composition ergonomics ever warrant a
+  first-party answer, this — not re-adding `asChild` — is the path.
 
 ## Consequences
 
