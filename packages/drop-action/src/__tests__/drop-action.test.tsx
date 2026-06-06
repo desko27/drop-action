@@ -1200,3 +1200,146 @@ describe('createDropAction — grabbing cursor (ADR-0019)', () => {
     release(ZONE_CENTER)
   })
 })
+
+// One Active per Drop Action (ADR-0021): a single in-flight drag per Drop
+// Action. A second concurrent start — a bubbled double-trigger or a second
+// pointer — is ignored; multi-pointer simultaneous drag is out of scope.
+describe('createDropAction — one Active per Drop Action (ADR-0021)', () => {
+  test('a default Item wrapping a useDragHandle fires onDrop once, not twice', () => {
+    const DA = createDropAction<Data>({ measure })
+    const onDrop = vi.fn()
+    function InnerHandle() {
+      const handleProps = DA.useDragHandle('card')
+      return (
+        <span data-testid="inner-handle" {...handleProps}>
+          grip
+        </span>
+      )
+    }
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          <InnerHandle />
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+
+    // Pressing the inner handle bubbles to the default Item wrapper, so one
+    // press calls startDrag('card') twice (inner trigger + bubbled wrapper
+    // trigger). The in-flight guard collapses it to a single drag — and a
+    // single Drop — instead of double-firing onDrop.
+    press(screen.getByTestId('inner-handle'), ITEM_CENTER)
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+
+    expect(onDrop).toHaveBeenCalledTimes(1)
+  })
+
+  test('a second concurrent pointer does not start a drag (multi-pointer is out of scope)', () => {
+    const DA = createDropAction<Data>({ measure })
+    const onDrop = vi.fn()
+    render(
+      <>
+        <DA.Item id="a" data={{ label: 'A' }}>
+          a
+        </DA.Item>
+        <DA.Item id="b" data={{ label: 'B' }}>
+          b
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+    const [a, b] = screen.getAllByRole('button')
+
+    // Finger 1 presses A and crosses the threshold → A is dragging.
+    fireEvent.pointerDown(a, { clientX: 50, clientY: 50, pointerId: 1 })
+    fireEvent.pointerMove(window, { clientX: 250, clientY: 50, pointerId: 1 })
+    // Finger 2 presses B while A is in flight: the guard blocks it, so B's
+    // pointer drives no drag of its own.
+    fireEvent.pointerDown(b, { clientX: 50, clientY: 50, pointerId: 2 })
+    fireEvent.pointerMove(window, { clientX: 250, clientY: 50, pointerId: 2 })
+    fireEvent.pointerUp(window, { clientX: 250, clientY: 50, pointerId: 2 })
+    fireEvent.pointerUp(window, { clientX: 250, clientY: 50, pointerId: 1 })
+
+    // Exactly one Drop fired, for the Item that won the race (A).
+    expect(onDrop).toHaveBeenCalledTimes(1)
+    const [dragged] = onDrop.mock.calls[0] as [DraggedItem<Data>]
+    expect(dragged.id).toBe('a')
+  })
+
+  test('a press released before activation frees the Drop Action for the next drag', () => {
+    const DA = createDropAction<Data>({ measure })
+    const onDrop = vi.fn()
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+    const item = screen.getByRole('button')
+
+    // A click: press and release with no move past the threshold — never a drag.
+    press(item, ITEM_CENTER)
+    release(ITEM_CENTER)
+
+    // A real drag afterward still works: the abandoned press cleared the flag.
+    press(item, ITEM_CENTER)
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+
+    expect(onDrop).toHaveBeenCalledTimes(1)
+  })
+
+  test('a touch swipe that abandons activation frees the Drop Action', () => {
+    const DA = createDropAction<Data>({ measure })
+    const onDrop = vi.fn()
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+      </>,
+    )
+    const item = screen.getByRole('button')
+
+    // A swipe beyond tolerance before the delay → 'cancel', the drag never
+    // begins (the list scrolls instead).
+    fireEvent.pointerDown(item, {
+      clientX: 50,
+      clientY: 50,
+      pointerId: 1,
+      pointerType: 'touch',
+    })
+    fireEvent.pointerMove(window, {
+      clientX: 50,
+      clientY: 90,
+      pointerId: 1,
+      pointerType: 'touch',
+    })
+    fireEvent.pointerUp(window, {
+      clientX: 50,
+      clientY: 90,
+      pointerId: 1,
+      pointerType: 'touch',
+    })
+
+    // A later drag still works: the abandoned swipe cleared the in-flight flag.
+    press(item, ITEM_CENTER)
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+
+    expect(onDrop).toHaveBeenCalledTimes(1)
+  })
+})

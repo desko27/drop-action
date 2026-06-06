@@ -54,8 +54,10 @@ type EngineDeps<Data, Accept, Reject> = {
 // document-wide rule shows `grabbing` everywhere without flickering to whatever
 // is under the pointer. We inject one shared `<style>` by id (idempotent), so a
 // drag shows it and ends remove it. Touches `document` only when a drag is
-// actually under way, so import and SSR stay DOM-free. Concurrent drags (the
-// rare multi-pointer / multi-Drop-Action case) share the one node; the first to
+// actually under way, so import and SSR stay DOM-free. Concurrent drags can only
+// happen across separate Drop Actions (each closure-isolated, ADR-0002;
+// multi-pointer within one action is out of scope, ADR-0021); they share the one
+// node, and the first to
 // end clears it — a purely cosmetic edge we accept for a tiny, self-healing
 // implementation (the next completed drag re-adds and clears it cleanly).
 const GRABBING_STYLE_ID = 'drop-action-grabbing-cursor'
@@ -99,14 +101,30 @@ export function createEngine<Data, Accept, Reject>({
 }: EngineDeps<Data, Accept, Reject>) {
   const constraint = resolveActivationConstraint(activationConstraint)
 
+  // One Active per Drop Action (ADR-0021): a single in-flight flag, per engine
+  // (= per Drop Action), gates startDrag. It blocks a second concurrent drag —
+  // a second pointer (multi-pointer drag is out of scope) and the bubbled
+  // double-start of a default Item that wraps a useDragHandle (the inner trigger
+  // plus the bubbled wrapper trigger both fire startDrag for one press). Set when
+  // a press enters the pending phase; cleared when that press is abandoned before
+  // activation, or when a live drag reaches a terminal outcome. Concurrency
+  // across separate Drop Actions is untouched — each has its own engine and flag.
+  let dragInFlight = false
+
   const startDrag = (id: string, event: PointerEvent) => {
     // Activation guard (ADR-0016): an ineligible press (interactive origin,
     // non-primary button) never enters the pending phase — and, since we never
     // preventDefault, the browser handles the click/checkbox normally.
     if (!shouldStart(event)) return
 
+    // One Active per Drop Action (ADR-0021): ignore a press while a drag is
+    // already pending or live in this Drop Action.
+    if (dragInFlight) return
+
     const item = items.get(id)
     if (!item) return
+
+    dragInFlight = true
 
     const kind = pointerKindOf(event.pointerType)
     const startX = event.clientX
@@ -286,6 +304,11 @@ export function createEngine<Data, Accept, Reject>({
           },
         })
         overlay.place = null
+        // Terminal outcome reached (ADR-0013): free this Drop Action for the
+        // next drag (ADR-0021). A resolve includes the async Dropping phase, so
+        // the flag stays set until the Drop truly settles — never freed at the
+        // pointerup-time cleanup, which can precede resolution.
+        dragInFlight = false
       }
 
       const flush = () => {
@@ -462,13 +485,17 @@ export function createEngine<Data, Accept, Reject>({
       endPending()
       // 'cancel' (a touch swipe beyond tolerance before the delay) abandons
       // activation: we never preventDefault, so the browser keeps scrolling.
+      // The press never became a drag, so free the Drop Action (ADR-0021).
       if (decision === 'activate') beginDrag(e.clientX, e.clientY)
+      else dragInFlight = false
     }
 
     const onPendingEnd = (e: PointerEvent) => {
       if (e.pointerId !== pointerId) return
-      // Released (or cancelled) before activation — it was a click/tap.
+      // Released (or cancelled) before activation — it was a click/tap. The
+      // press never became a drag, so free the Drop Action (ADR-0021).
       endPending()
+      dragInFlight = false
     }
 
     window.addEventListener('pointermove', onPendingMove)
