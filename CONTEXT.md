@@ -134,6 +134,16 @@ winning `zoneId` or `null`. Built-ins: `rectIntersection` (default),
 `pointerWithin`, `closestCenter`.
 _Avoid_: Hit testing, intersection (bare), collision (bare).
 
+**Clipped rect**:
+A Zone's rect after clipping to its visible region — the raw rect
+intersected with the box of every clipping ancestor (`overflow`
+scroll/auto/hidden/clip) and with the viewport. Distinct from the Zone's
+raw rect (its full `getBoundingClientRect`): the clipped rect is what
+collision detection tests against, so a part of a Zone scrolled out behind
+an overflow ancestor cannot be Over.
+_Avoid_: Visible rect (sounds like occlusion or CSS visibility), collision
+rect (that is the Overlay's, ADR-0017).
+
 **Modifier**:
 A composable function that adjusts the Overlay's proposed `{ x, y }`
 transform during a drag. Modifiers run left-to-right (each feeds the

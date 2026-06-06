@@ -3,7 +3,8 @@ import {
   pointerKindOf,
   resolveActivationConstraint,
 } from './activation'
-import type { CollisionDetection } from './collision'
+import { clipToVisible, resolveClippers } from './clip'
+import type { CollisionDetection, ZoneRect } from './collision'
 import type {
   ActiveSnapshot,
   ItemRegistration,
@@ -151,11 +152,31 @@ export function createEngine<Data, Accept, Reject>({
       const anchor: GrabAnchor =
         item.grabAnchorRef.current ?? grabAnchor ?? 'proportional'
 
-      const measureZones = () =>
-        [...zones.entries()].map(([zoneId, zone]) => ({
-          id: zoneId,
-          rect: measure({ node: zone.node, id: zoneId, type: 'zone' }),
-        }))
+      // Each Zone's clipping-ancestor chain, resolved once on first measure and
+      // cached for the drag (ADR-0023): the chain needs `getComputedStyle`, but
+      // only the ancestors' positions — not the DOM shape — change on scroll, so
+      // re-measures below just re-read their boxes. Covers every Zone, including
+      // ones that start fully clipped, so they can re-enter when scrolled in.
+      const zoneClippers = new Map<string, Element[]>()
+      const measureZones = () => {
+        const rects: ZoneRect[] = []
+        for (const [zoneId, zone] of zones) {
+          let clippers = zoneClippers.get(zoneId)
+          if (!clippers) {
+            clippers = resolveClippers(zone.node)
+            zoneClippers.set(zoneId, clippers)
+          }
+          // Clip the raw rect to the Zone's visible region (ADR-0023): only the
+          // part not scrolled out behind an overflow ancestor can be Over. A
+          // Zone clipped to nothing drops out of the snapshot entirely — the
+          // exclusion is re-applied every measure, so a Zone scrolled back into
+          // view re-enters and becomes Over-able again.
+          const raw = measure({ node: zone.node, id: zoneId, type: 'zone' })
+          const rect = clipToVisible(raw, clippers)
+          if (rect) rects.push({ id: zoneId, rect })
+        }
+        return rects
+      }
 
       // Zone rects are re-measured during the drag (ADR-0017), so this is a
       // mutable snapshot, refreshed on scroll/resize below.
