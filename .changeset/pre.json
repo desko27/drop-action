@@ -11,6 +11,7 @@
     "activesnapback-member-name",
     "channel-component-return",
     "clip-zone-collision-rects",
+    "defer-initial-over",
     "drop-verdict-accept-reject",
     "grab-anchor",
     "grab-cursor",
