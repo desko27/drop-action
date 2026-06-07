@@ -36,7 +36,11 @@ The floating layer rendered at the pointer during a drag;
 `<DropAction.Active>` renders into it. It is portalled to `document.body`
 (overridable) and moved with a fixed-position transform. Because the
 source Item never moves, the Overlay is the only thing the user sees
-travel.
+travel. Rendering an Overlay is **required**, not optional: headless means
+the consumer supplies the Overlay's *content*, not that a drag may omit it
+— a drag with no Overlay shows nothing travelling and is a broken use, not a
+supported mode. So **Collision detection** always sizes against the Overlay,
+never the source Item (ADR-0032).
 _Avoid_: Ghost, clone, preview, drag image.
 
 **Active**:
@@ -156,7 +160,8 @@ _Avoid_: Over (that is the droppable sibling), watch, mouseover.
 
 **Collision detection**:
 The pluggable strategy that picks which Zone (if any) is Over, given the
-pointer, the Overlay rect, and the Drop Action's Zone rects. Returns one
+pointer, the Overlay rect (always the rendered Overlay's, never the source
+Item's — ADR-0017, ADR-0032), and the Drop Action's Zone rects. Returns one
 winning `zoneId` or `null`. Built-ins: `rectIntersection` (default),
 `pointerWithin`, `closestCenter`.
 _Avoid_: Hit testing, intersection (bare), collision (bare).
