@@ -58,7 +58,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-// The snap-back overlay element rendered by <SnapBack> (the portal child).
+// The snap-back overlay element rendered by <ActiveSnapBack> (the portal child).
 const overlay = () => screen.queryByTestId('overlay')?.parentElement ?? null
 
 describe('drop-action/snap-back — Reject bounce', () => {
@@ -73,7 +73,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
       })
       // No accept() / reject() -> an inert Reject.
     }
-    const { SnapBack } = snapBack<Data>()(DA)
+    const { ActiveSnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -83,9 +83,9 @@ describe('drop-action/snap-back — Reject bounce', () => {
         <DA.Zone id="slot" onDrop={rejectDrop}>
           slot
         </DA.Zone>
-        <SnapBack>
+        <ActiveSnapBack>
           {({ data }) => <div data-testid="overlay">{data.label}</div>}
-        </SnapBack>
+        </ActiveSnapBack>
       </>,
     )
 
@@ -113,7 +113,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
   test('a synchronous Accept does not snap back (no bounce, Overlay gone)', async () => {
     const DA = createDropAction<Data>({ measure })
     const onAccept = vi.fn()
-    const { SnapBack } = snapBack<Data>()(DA)
+    const { ActiveSnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -123,9 +123,9 @@ describe('drop-action/snap-back — Reject bounce', () => {
         <DA.Zone id="slot" onDrop={(_item, { accept }) => accept()}>
           slot
         </DA.Zone>
-        <SnapBack>
+        <ActiveSnapBack>
           {({ data }) => <div data-testid="overlay">{data.label}</div>}
-        </SnapBack>
+        </ActiveSnapBack>
       </>,
     )
 
@@ -143,7 +143,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
     expect(overlay()).toBeNull()
   })
 
-  test('useSnapBack exposes snapping=true on Reject and false on Accept', async () => {
+  test('useActiveSnapBack exposes snapping=true on Reject and false on Accept', async () => {
     const DA = createDropAction<Data>({ measure })
     let resolveReject: (() => void) | undefined
     const rejectDrop = async () => {
@@ -151,10 +151,10 @@ describe('drop-action/snap-back — Reject bounce', () => {
         resolveReject = r
       })
     }
-    const { useSnapBack } = snapBack<Data>()(DA)
+    const { useActiveSnapBack } = snapBack<Data>()(DA)
 
     function Probe() {
-      const { snapping, item } = useSnapBack()
+      const { snapping, item } = useActiveSnapBack()
       const dragged = item as DraggedItem<Data> | null
       return (
         <div data-testid="state">
@@ -190,9 +190,9 @@ describe('drop-action/snap-back — Reject bounce', () => {
     expect(screen.getByTestId('state')).toHaveTextContent('snapping:card')
   })
 
-  test('the SnapBack overlay carries data-snapping only during the bounce', async () => {
+  test('the ActiveSnapBack overlay carries data-snapping only during the bounce', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { SnapBack } = snapBack<Data>()(DA)
+    const { ActiveSnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -202,9 +202,9 @@ describe('drop-action/snap-back — Reject bounce', () => {
         <DA.Zone id="slot" onDrop={() => {}}>
           slot
         </DA.Zone>
-        <SnapBack>
+        <ActiveSnapBack>
           {({ data }) => <div data-testid="overlay">{data.label}</div>}
-        </SnapBack>
+        </ActiveSnapBack>
       </>,
     )
 
@@ -243,7 +243,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
       })
       accept()
     }
-    const { SnapBack } = snapBack<Data>()(DA)
+    const { ActiveSnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -253,9 +253,9 @@ describe('drop-action/snap-back — every Return bounces', () => {
         <DA.Zone id="slot" onDrop={acceptDrop}>
           slot
         </DA.Zone>
-        <SnapBack>
+        <ActiveSnapBack>
           {({ data }) => <div data-testid="overlay">{data.label}</div>}
-        </SnapBack>
+        </ActiveSnapBack>
       </>,
     )
 
@@ -272,7 +272,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
 
   test('releasing over no Zone (a No-drop) snaps back', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { SnapBack } = snapBack<Data>()(DA)
+    const { ActiveSnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -282,9 +282,9 @@ describe('drop-action/snap-back — every Return bounces', () => {
         <DA.Zone id="slot" onDrop={() => {}}>
           slot
         </DA.Zone>
-        <SnapBack>
+        <ActiveSnapBack>
           {({ data }) => <div data-testid="overlay">{data.label}</div>}
-        </SnapBack>
+        </ActiveSnapBack>
       </>,
     )
 
@@ -299,7 +299,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
 
   test('cancelling with Escape snaps back from wherever the Overlay is', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { SnapBack } = snapBack<Data>()(DA)
+    const { ActiveSnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -309,9 +309,9 @@ describe('drop-action/snap-back — every Return bounces', () => {
         <DA.Zone id="slot" onDrop={() => {}}>
           slot
         </DA.Zone>
-        <SnapBack>
+        <ActiveSnapBack>
           {({ data }) => <div data-testid="overlay">{data.label}</div>}
-        </SnapBack>
+        </ActiveSnapBack>
       </>,
     )
 
@@ -326,7 +326,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
 
   test('pointercancel snaps back likewise', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { SnapBack } = snapBack<Data>()(DA)
+    const { ActiveSnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -336,9 +336,9 @@ describe('drop-action/snap-back — every Return bounces', () => {
         <DA.Zone id="slot" onDrop={() => {}}>
           slot
         </DA.Zone>
-        <SnapBack>
+        <ActiveSnapBack>
           {({ data }) => <div data-testid="overlay">{data.label}</div>}
-        </SnapBack>
+        </ActiveSnapBack>
       </>,
     )
 
@@ -367,7 +367,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
             height: 100,
           }
     const DA = createDropAction<Data>({ measure: scrollMeasure })
-    const { SnapBack } = snapBack<Data>()(DA)
+    const { ActiveSnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -377,9 +377,9 @@ describe('drop-action/snap-back — every Return bounces', () => {
         <DA.Zone id="slot" onDrop={() => {}}>
           slot
         </DA.Zone>
-        <SnapBack>
+        <ActiveSnapBack>
           {({ data }) => <div data-testid="overlay">{data.label}</div>}
-        </SnapBack>
+        </ActiveSnapBack>
       </>,
     )
 
@@ -395,12 +395,12 @@ describe('drop-action/snap-back — every Return bounces', () => {
     expect(overlay()?.style.transform).toBe('translate3d(0px, -40px, 0)')
   })
 
-  test('useSnapBack exposes the Return outcome so consumers can vary treatment', async () => {
+  test('useActiveSnapBack exposes the Return outcome so consumers can vary treatment', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { useSnapBack } = snapBack<Data>()(DA)
+    const { useActiveSnapBack } = snapBack<Data>()(DA)
 
     function Probe() {
-      const { outcome } = useSnapBack()
+      const { outcome } = useActiveSnapBack()
       return <div data-testid="outcome">{outcome ?? 'none'}</div>
     }
 

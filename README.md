@@ -123,7 +123,7 @@ Each verdict can carry a payload to the item — `accept(payload)` / `reject(pay
 
 ### Snap-back (opt-in Extension)
 
-The core is unopinionated about animation. `drop-action/snap-back` eases the overlay back to its origin on any **return** (a reject, a no-drop, or a cancel — every ending except an accept). It ships as an **Extension**: inject it with `.extend()` to get `DnD.SnapBack` / `DnD.useSnapBack` under the namespace:
+The core is unopinionated about animation. `drop-action/snap-back` eases the overlay back to its origin on any **return** (a reject, a no-drop, or a cancel — every ending except an accept). It ships as an **Extension**: inject it with `.extend()` to get `DnD.ActiveSnapBack` / `DnD.useActiveSnapBack` under the namespace:
 
 ```tsx
 import { createDropAction } from 'drop-action'
@@ -131,12 +131,12 @@ import { snapBack } from 'drop-action/snap-back'
 
 const DnD = createDropAction<Card>().extend(snapBack<Card>())
 
-// Use <DnD.SnapBack> in place of <DnD.Active>: it renders the overlay while
+// Use <DnD.ActiveSnapBack> in place of <DnD.Active>: it renders the overlay while
 // dragging AND keeps a ghost mounted that animates home on a return.
-<DnD.SnapBack>{({ data }) => <div className="overlay">{data.label}</div>}</DnD.SnapBack>
+<DnD.ActiveSnapBack>{({ data }) => <div className="overlay">{data.label}</div>}</DnD.ActiveSnapBack>
 ```
 
-`.extend(...)` takes one or more Extensions and merges their members under the channel; it is a method (not a second `createDropAction` argument) so the Extension types stay inferred even when you fix `Data` explicitly. To apply one by hand instead, call it: `const { SnapBack } = snapBack<Card>()(DnD)`.
+`.extend(...)` takes one or more Extensions and merges their members under the channel; it is a method (not a second `createDropAction` argument) so the Extension types stay inferred even when you fix `Data` explicitly. To apply one by hand instead, call it: `const { ActiveSnapBack } = snapBack<Card>()(DnD)`.
 
 ### Spring-loading (hover & dwell)
 

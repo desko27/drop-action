@@ -5,9 +5,9 @@ import { useState } from 'react'
 type CardData = { label: string }
 
 // Snap-back is an opt-in Extension (ADR-0025): `.extend()` injects it under the
-// namespace, exposing DA.SnapBack / DA.useSnapBack. Any Return (a Reject, a
+// namespace, exposing DA.ActiveSnapBack / DA.useActiveSnapBack. Any Return (a Reject, a
 // No-drop, or a Cancel) eases the Overlay back to the Item's origin rect; an
-// Accept does not. <DA.SnapBack> stands in for the core <Active>, rendering the
+// Accept does not. <DA.ActiveSnapBack> stands in for the core <Active>, rendering the
 // Overlay and keeping a ghost through the bounce.
 const DA = createDropAction<CardData>().extend(snapBack<CardData>())
 
@@ -78,9 +78,9 @@ export function App() {
         <RejectSlot />
       </div>
 
-      <DA.SnapBack>
+      <DA.ActiveSnapBack>
         {({ data }) => <div className="card card--overlay">{data.label}</div>}
-      </DA.SnapBack>
+      </DA.ActiveSnapBack>
     </main>
   )
 }

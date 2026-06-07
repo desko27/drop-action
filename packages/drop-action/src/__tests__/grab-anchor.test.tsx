@@ -50,7 +50,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-// The styled Overlay div <Active> / <SnapBack> render the testid child into.
+// The styled Overlay div <Active> / <ActiveSnapBack> render the testid child into.
 const overlay = () => screen.queryByTestId('overlay')?.parentElement ?? null
 
 // Mount an Item + <Active> for `DA`, press at `grab`, then move to `to`. The
@@ -145,16 +145,16 @@ describe('grab anchor — where the Overlay hangs from the pointer (ADR-0021)', 
 describe('Return homes the Overlay centered on the source (ADR-0022)', () => {
   test('a No-drop returns the chip centered on the source, not to its corner', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { SnapBack } = snapBack<Data>()(DA)
+    const { ActiveSnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
         <DA.Item id="card" data={{ label: 'Card' }}>
           card
         </DA.Item>
-        <SnapBack>
+        <ActiveSnapBack>
           {({ data }) => <div data-testid="overlay">{data.label}</div>}
-        </SnapBack>
+        </ActiveSnapBack>
       </>,
     )
 

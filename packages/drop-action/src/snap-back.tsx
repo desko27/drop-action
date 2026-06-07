@@ -26,7 +26,7 @@ import type {
 // `useResolution`, `useOverlay` are returned by `createDropAction`. Snap-back is
 // generic across Drop Actions, so `snapBack(options)` returns a function that
 // takes the channel and closes over its reads. Inject it via
-// `createDropAction(options, [snapBack()])` to get `DA.SnapBack` / `DA.useSnapBack`
+// `.extend(snapBack())` to get `DA.ActiveSnapBack` / `DA.useActiveSnapBack`
 // under the namespace, or apply it by hand with `snapBack()(DA)`.
 //
 // How the bounce works. The core states the terminal outcome directly
@@ -61,7 +61,7 @@ export type SnapBackReads<Data> = {
   useOverlay: () => OverlayProps
 }
 
-// The headless result the `useSnapBack` hook returns. While a drag is live the
+// The headless result the `useActiveSnapBack` hook returns. While a drag is live the
 // engine moves the Overlay imperatively (ADR-0018), so `ref` is the Overlay ref
 // to spread and `style` is the base; during the bounce `ref` is undefined and
 // `style.transform` eases to the origin under `style.transition`.
@@ -76,7 +76,7 @@ export type SnapBackState<Data> = {
   item: DraggedItem<Data> | null
   // Which Return is being animated ('rejected' | 'no-drop' | 'cancelled'),
   // else null. Exposed so a consumer can vary treatment per outcome (e.g.
-  // skip the bounce on 'cancelled'); the <SnapBack> sugar treats them alike.
+  // skip the bounce on 'cancelled'); the <ActiveSnapBack> sugar treats them alike.
   outcome: DropOutcome | null
   // The Overlay style. While dragging it is the base style and the engine
   // writes the transform on the node; during the bounce it carries the
@@ -102,7 +102,7 @@ export function snapBack<Data = unknown>(options: SnapBackOptions = {}) {
     const { useActive, useResolution, useOverlay } =
       channel as SnapBackReads<Data>
 
-    function useSnapBack(): SnapBackState<Data> {
+    function useActiveSnapBack(): SnapBackState<Data> {
       const active = useActive()
       const resolution = useResolution()
       const overlay = useOverlay()
@@ -206,7 +206,7 @@ export function snapBack<Data = unknown>(options: SnapBackOptions = {}) {
       }
     }
 
-    type SnapBackProps = {
+    type ActiveSnapBackProps = {
       // Renders the Overlay/ghost content for the dragged Item. Receives the
       // dragged { id, data } — the same shape the core's <Active> yields.
       children: (item: DraggedItem<Data>) => ReactNode
@@ -220,9 +220,13 @@ export function snapBack<Data = unknown>(options: SnapBackOptions = {}) {
     // while dragging AND keeps a ghost mounted through the Return bounce. Use
     // this instead of <Action.Active> to get snap-back for free; it bounces
     // uniformly on every Return. To vary treatment per outcome, read `outcome`
-    // from `useSnapBack()` and render the ghost yourself.
-    function SnapBack({ children, className, container }: SnapBackProps) {
-      const { item, style, ref, snapping } = useSnapBack()
+    // from `useActiveSnapBack()` and render the ghost yourself.
+    function ActiveSnapBack({
+      children,
+      className,
+      container,
+    }: ActiveSnapBackProps) {
+      const { item, style, ref, snapping } = useActiveSnapBack()
       if (!item) return null
 
       return createPortal(
@@ -240,7 +244,7 @@ export function snapBack<Data = unknown>(options: SnapBackOptions = {}) {
       )
     }
 
-    return { useSnapBack, SnapBack }
+    return { useActiveSnapBack, ActiveSnapBack }
   }
 }
 
