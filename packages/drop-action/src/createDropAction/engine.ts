@@ -141,6 +141,11 @@ export function createEngine<Data, Accept, Reject>({
   // across separate Drop Actions is untouched — each has its own engine and flag.
   let dragInFlight = false
 
+  // The live drag's registry hook (ADR-0026), set while a drag is in flight and
+  // null between drags. It lets an external registry mutation (a Zone/Hover
+  // target mounting or unmounting mid-drag) re-observe the node and re-measure.
+  let activeDrag: { syncRegistry: () => void } | null = null
+
   const startDrag = (id: string, event: PointerEvent) => {
     // Activation guard (ADR-0016): an ineligible press (interactive origin,
     // non-primary button) never enters the pending phase — and, since we never
@@ -228,7 +233,7 @@ export function createEngine<Data, Accept, Reject>({
       let dwellAnchorX = activateX
       let dwellAnchorY = activateY
       let frame: number | null = null
-      let remeasureFrame: number | null = null
+      let burstFrame: number | null = null
 
       // Route subsequent pointer events to the captured element so the drag
       // survives the pointer leaving the handle. Best-effort: not every
@@ -526,23 +531,90 @@ export function createEngine<Data, Accept, Reject>({
         if (frame === null) frame = requestAnimationFrame(flush)
       }
 
-      // Zones move in viewport coords only on scroll/resize/layout-change —
-      // never on pointer move — so re-measuring is event-driven and
-      // rAF-throttled, not per frame (ADR-0017). Capture-phase scroll catches
-      // nested scroll containers.
-      const remeasure = () => {
+      // The settle burst (ADR-0026): a re-measure that, once triggered, re-reads
+      // every Zone/Hover rect each animation frame until the rects hold steady
+      // for two consecutive frames, with a hard frame cap each trigger
+      // re-extends. It replaces ADR-0017's single re-measure: one frame would
+      // freeze an animated open at its near-start position and leave the rects
+      // drifting; the burst follows the layout to where it settles, agnostic to
+      // how it animates. Steady-state cost stays zero — a burst runs only on an
+      // actual scroll/resize/registry/observer trigger, never per pointer frame.
+      // Zones move in viewport coords only on scroll/resize/layout-change, never
+      // on pointer move, so this stays event-driven and rAF-throttled (ADR-0017).
+      const SETTLE_STABLE_FRAMES = 2
+      const SETTLE_CAP_FRAMES = 20
+      const rectsKey = (zr: ZoneRect[], hr: ZoneRect[]): string => {
+        let key = ''
+        for (const { id: rid, rect } of zr)
+          key += `z${rid}:${rect.left},${rect.top},${rect.right},${rect.bottom};`
+        for (const { id: rid, rect } of hr)
+          key += `h${rid}:${rect.left},${rect.top},${rect.right},${rect.bottom};`
+        return key
+      }
+      let burstActive = false
+      let burstFramesLeft = 0
+      let burstStableFrames = 0
+      let burstLastKey = ''
+      const burstStep = () => {
+        burstFrame = null
         zoneRects = measureZones()
         hoverRects = measureHovers()
         syncOver()
         syncHover()
-      }
-      const onScrollResize = () => {
-        if (remeasureFrame === null) {
-          remeasureFrame = requestAnimationFrame(() => {
-            remeasureFrame = null
-            remeasure()
-          })
+        const key = rectsKey(zoneRects, hoverRects)
+        if (key === burstLastKey) burstStableFrames += 1
+        else {
+          burstStableFrames = 0
+          burstLastKey = key
         }
+        burstFramesLeft -= 1
+        if (burstStableFrames < SETTLE_STABLE_FRAMES && burstFramesLeft > 0)
+          burstFrame = requestAnimationFrame(burstStep)
+        else burstActive = false
+      }
+      // Every trigger — scroll, resize, registry change, ResizeObserver,
+      // MutationObserver — funnels here; overlapping fires deduplicate into one
+      // rAF-throttled burst, and a fresh trigger re-extends a burst in flight.
+      const scheduleSettleBurst = () => {
+        burstFramesLeft = SETTLE_CAP_FRAMES
+        burstStableFrames = 0
+        if (!burstActive) {
+          burstActive = true
+          burstFrame = requestAnimationFrame(burstStep)
+        }
+      }
+
+      // React to layout reflow and structural DOM change during the drag, not
+      // just scroll/resize (ADR-0026). The ResizeObserver catches a target — or
+      // the page — resizing in place; the MutationObserver catches structural
+      // reflow from non-target elements. `childList` only, never `attributes`,
+      // so the Overlay's per-frame transform writes (ADR-0018) cannot feed back
+      // into a re-measure loop. Created only on a real drag, so import/SSR stay
+      // DOM-free; guarded for environments without the observers.
+      const ro =
+        typeof ResizeObserver !== 'undefined'
+          ? new ResizeObserver(() => scheduleSettleBurst())
+          : null
+      const mo =
+        typeof MutationObserver !== 'undefined'
+          ? new MutationObserver(() => scheduleSettleBurst())
+          : null
+
+      // (Re)observe every registered Zone/Hover node for in-place resize
+      // (ADR-0026). `observe` is idempotent, so re-running it on each registry
+      // change is a no-op for already-watched nodes. The document root is
+      // observed once at start (below) for growth no single target reports.
+      const observeTargets = () => {
+        if (!ro) return
+        for (const reg of zones.values()) ro.observe(reg.node)
+        for (const reg of hovers.values()) ro.observe(reg.node)
+      }
+
+      // The registry changed mid-drag (a target mounted/unmounted, ADR-0026):
+      // watch the new node and re-measure so it enters (or leaves) the snapshot.
+      const syncRegistry = () => {
+        observeTargets()
+        scheduleSettleBurst()
       }
 
       // Tear down every listener and any pending frame. Called on every exit
@@ -552,10 +624,16 @@ export function createEngine<Data, Accept, Reject>({
         window.removeEventListener('pointerup', onUp)
         window.removeEventListener('pointercancel', onCancel)
         window.removeEventListener('keydown', onKeyDown)
-        window.removeEventListener('scroll', onScrollResize, true)
-        window.removeEventListener('resize', onScrollResize)
+        window.removeEventListener('scroll', scheduleSettleBurst, true)
+        window.removeEventListener('resize', scheduleSettleBurst)
+        // Stop reacting to layout/DOM changes (ADR-0026): disconnect the
+        // observers and free the live-drag registry hook on every exit path.
+        ro?.disconnect()
+        mo?.disconnect()
+        activeDrag = null
+        burstActive = false
         if (frame !== null) cancelAnimationFrame(frame)
-        if (remeasureFrame !== null) cancelAnimationFrame(remeasureFrame)
+        if (burstFrame !== null) cancelAnimationFrame(burstFrame)
         // A pending dwell never outlives the drag (ADR-0024): cleanup runs on
         // every exit path, so `onDwell` cannot fire after release/cancel.
         clearDwell()
@@ -666,8 +744,17 @@ export function createEngine<Data, Accept, Reject>({
       window.addEventListener('pointerup', onUp)
       window.addEventListener('pointercancel', onCancel)
       window.addEventListener('keydown', onKeyDown)
-      window.addEventListener('scroll', onScrollResize, true)
-      window.addEventListener('resize', onScrollResize)
+      // Re-measure on scroll/resize and on DOM/layout change (ADR-0026): an
+      // active drag tracks the tree changing shape under it (spring-load), not
+      // only scrolling. Observe the document root for growth no single target
+      // reports; per-node observation is set up via observeTargets.
+      window.addEventListener('scroll', scheduleSettleBurst, true)
+      window.addEventListener('resize', scheduleSettleBurst)
+      observeTargets()
+      ro?.observe(document.documentElement)
+      mo?.observe(document.documentElement, { childList: true, subtree: true })
+      // Expose the registry hook for the duration of the drag (ADR-0026).
+      activeDrag = { syncRegistry }
     }
 
     // ----- Pending activation phase (no drag yet) -----------------------
@@ -722,5 +809,11 @@ export function createEngine<Data, Accept, Reject>({
     }
   }
 
-  return { startDrag }
+  // Notify the engine that the Zone/Hover registries changed (ADR-0026): a
+  // no-op unless a drag is live, in which case the live drag re-observes the
+  // nodes and schedules a settle burst so a target mounted/unmounted mid-drag
+  // enters or leaves collision without waiting for a scroll/resize.
+  const notifyRegistryChange = () => activeDrag?.syncRegistry()
+
+  return { startDrag, notifyRegistryChange }
 }

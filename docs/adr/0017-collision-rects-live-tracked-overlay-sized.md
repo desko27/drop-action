@@ -14,6 +14,12 @@ rect to its visible region (overflow ancestors + viewport) and drops Zones
 clipped to nothing, so a Zone scrolled out behind a clipping ancestor cannot be
 Over._
 
+_Extended by ADR-0026: the `scroll`/`resize`-only trigger below is widened to
+also re-measure on registry change, `ResizeObserver`, and `MutationObserver`,
+through an adaptive settling burst — closing the "Zones that resize mid-drag with
+no scroll/resize stay uncovered until a `ResizeObserver` is added" gap noted
+below._
+
 Two refinements to how the rect collision detection tests against is built,
 both found dogfooding in ORION.
 
