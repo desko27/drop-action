@@ -49,6 +49,10 @@ export type Resolution<Data> = {
 export type OverlayRegistry = {
   node: HTMLElement | null
   place: ((node: HTMLElement) => void) | null
+  // Runs the first collision pass once the Overlay node is measurable: Over is
+  // deferred at drag-start and resolved on `useOverlay` registration (ADR-0032).
+  // Null between drags, like `place`.
+  syncOver: (() => void) | null
 }
 
 export type ItemRegistration<Data, Accept = void, Reject = void> = {

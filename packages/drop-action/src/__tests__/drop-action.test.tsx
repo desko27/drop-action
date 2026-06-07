@@ -466,6 +466,11 @@ describe('createDropAction — public API behaviour', () => {
         <DA.Item id="card" data={{ label: 'Card' }}>
           card
         </DA.Item>
+        {/* The Overlay is mandatory (ADR-0032): collision is Overlay-sized and
+            the initial Over resolves on the Overlay's registration. */}
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
         <DA.Zone id="slot" onDrop={() => {}}>
           slot
         </DA.Zone>
@@ -499,6 +504,63 @@ describe('createDropAction — public API behaviour', () => {
     await flush()
     expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
     expect(screen.getByTestId('over-other')).toHaveTextContent('none')
+  })
+
+  test('the initial Over is resolved from the Overlay, not the source footprint (ADR-0032)', () => {
+    // A 30x30 chip Overlay over a 100x100 source, anchored at the source
+    // top-left ('preserve'). The Zone sits at x:[50,150] — the *source*
+    // footprint overlaps it at drag start, but the *chip* does not. The initial
+    // Over must follow the chip (null), never flash the source's Zone.
+    const CHIP_RECT: Rect = {
+      top: 0,
+      left: 0,
+      right: 30,
+      bottom: 30,
+      width: 30,
+      height: 30,
+    }
+    const ZONE_AT_50: Rect = {
+      top: 0,
+      left: 50,
+      right: 150,
+      bottom: 100,
+      width: 100,
+      height: 100,
+    }
+    const measureChip: Measure = ({ type }) =>
+      type === 'zone' ? ZONE_AT_50 : type === 'overlay' ? CHIP_RECT : ITEM_RECT
+    const DA = createDropAction<Data>({
+      measure: measureChip,
+      grabAnchor: 'preserve',
+    })
+    function Probe() {
+      const over = DA.useOver('slot')
+      return <div data-testid="over-slot">{over ? over.id : 'none'}</div>
+    }
+    render(
+      <>
+        <DA.Item id="card" data={{ label: 'Card' }}>
+          card
+        </DA.Item>
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
+        <DA.Zone id="slot" onDrop={() => {}}>
+          slot
+        </DA.Zone>
+        <Probe />
+      </>,
+    )
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    // Cross the 8px mouse threshold by 2px: the chip sits at x:[10,40] — short
+    // of the Zone at x:50 — while the 100-wide source footprint would reach it.
+    move({ x: ITEM_CENTER.x + 10, y: ITEM_CENTER.y })
+    expect(screen.getByTestId('over-slot')).toHaveTextContent('none')
+
+    // Shoving the chip onto the Zone resolves Over normally — it was never stuck.
+    move({ x: ITEM_CENTER.x + 50, y: ITEM_CENTER.y })
+    expect(screen.getByTestId('over-slot')).toHaveTextContent('card')
   })
 
   test('useItem(...).isDragging is true for the dragged Item and false otherwise', async () => {
@@ -1101,6 +1163,11 @@ describe('createDropAction — selective reads (ADR-0018)', () => {
         <DA.Item id="card" data={{ label: 'Card' }}>
           card
         </DA.Item>
+        {/* The Overlay is mandatory (ADR-0032): the initial Over resolves on its
+            registration, so 'a' is Over right after the activating move. */}
+        <DA.Active>
+          {({ data }) => <div data-testid="overlay">{data.label}</div>}
+        </DA.Active>
         <DA.Zone id="a" onDrop={() => {}}>
           a
         </DA.Zone>

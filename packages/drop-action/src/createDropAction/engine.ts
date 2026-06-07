@@ -387,6 +387,10 @@ export function createEngine<Data, Accept, Reject>({
           commit({ over })
         }
       }
+      // Exposed so the Overlay's `useOverlay` registration can run the first
+      // collision pass the instant the node is measurable (ADR-0032): Over is
+      // deferred at drag-start (committed null) and resolved here, before paint.
+      overlay.syncOver = syncOver
 
       // The Hover target under the cursor (ADR-0024): a pointer-only hit-test
       // over the Hover-target rects, independent of the Overlay and of the Drop
@@ -511,6 +515,7 @@ export function createEngine<Data, Accept, Reject>({
           },
         })
         overlay.place = null
+        overlay.syncOver = null
         // Terminal outcome reached (ADR-0013): free this Drop Action for the
         // next drag (ADR-0029). A resolve includes the async Dropping phase, so
         // the flag stays set until the Drop truly settles — never freed at the
@@ -757,12 +762,21 @@ export function createEngine<Data, Accept, Reject>({
       }
 
       // Initial publish: the drag begins from the original press point, so the
-      // Overlay does not jump on activation.
+      // Overlay does not jump on activation. Over is deferred — it stays null
+      // until the Overlay registers and is measured (ADR-0032), so collision is
+      // always Overlay-sized and never flashes the source footprint at start.
+      // Hover is a pointer-only pass independent of the Overlay (CONTEXT.md —
+      // Hover), so it resolves at once.
       transform = resolveTransform(activateX, activateY)
-      over = overAt(activateX, activateY)
       hover = hoverAt(activateX, activateY)
       commit({ active: draggingActive(), over, hover, resolution: null })
-      if (overlay.node) placeOverlay(overlay.node)
+      // Normally the Overlay mounts after this commit and resolves Over from its
+      // `useOverlay` registration (the callback ref calls `syncOver`). If it is
+      // already mounted, that ref will not fire, so place and resolve Over now.
+      if (overlay.node) {
+        placeOverlay(overlay.node)
+        syncOver()
+      }
       // A drag that begins already over a Hover target arms the dwell at once.
       armDwell(hover)
       // Show grabbing only once the press has truly become a drag (not on a

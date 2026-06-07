@@ -148,8 +148,9 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   const hovers = new Map<string, HoverRegistration<Data>>()
 
   // The shared handle on the rendered Overlay node (ADR-0017, ADR-0018): the
-  // `useOverlay` ref sets `node`; the engine sets `place` while a drag is live.
-  const overlay: OverlayRegistry = { node: null, place: null }
+  // `useOverlay` ref sets `node`; the engine sets `place` and `syncOver` while a
+  // drag is live (the latter resolves the deferred initial Over, ADR-0032).
+  const overlay: OverlayRegistry = { node: null, place: null, syncOver: null }
 
   const engine = createEngine<Data, Accept, Reject>({
     items,
@@ -222,8 +223,12 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   function useOverlay(): OverlayProps {
     const ref = useCallback((node: HTMLElement | null) => {
       overlay.node = node
-      // Position a node that mounts after the drag has already started.
+      // Position a node that mounts after the drag has already started, then run
+      // the first collision pass now that the Overlay is measurable (ADR-0032):
+      // the initial Over is deferred at drag-start and resolved here, in the
+      // commit phase before paint, so `isOver` never flashes the source rect.
       if (node && overlay.place) overlay.place(node)
+      if (node && overlay.syncOver) overlay.syncOver()
     }, [])
     return { ref, style: OVERLAY_STYLE }
   }

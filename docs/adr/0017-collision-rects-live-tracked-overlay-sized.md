@@ -20,6 +20,13 @@ through an adaptive settling burst — closing the "Zones that resize mid-drag w
 no scroll/resize stay uncovered until a `ResizeObserver` is added" gap noted
 below._
 
+_Refined by ADR-0032: the source-rect fallback below is removed **from
+collision** — the Overlay is mandatory (a drag always renders one), so collision
+is always Overlay-sized, and the **initial** Over is deferred to the Overlay's
+registration (committed `null` until then) rather than emitted from the source
+footprint at drag-start. The fallback survives only for the pre-mount transform /
+modifier clamp._
+
 Two refinements to how the rect collision detection tests against is built,
 both found dogfooding in ORION.
 
