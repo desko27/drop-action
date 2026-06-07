@@ -7,6 +7,7 @@
   "changesets": [
     "activation-distance-default",
     "activation-guard",
+    "active-data-snapshot-drag-start",
     "activesnapback-member-name",
     "channel-component-return",
     "clip-zone-collision-rects",
@@ -19,6 +20,7 @@
     "live-remeasure-dom-layout",
     "modifiers-overlay-rect",
     "one-active-per-drop-action",
+    "remeasure-observes-clipper-ancestors",
     "remove-aschild",
     "remove-create-drop-action-id",
     "return-homes-centered",
