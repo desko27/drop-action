@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- 4da68b5: Rename the snap-back Extension's namespace members so they sit next to their core counterparts in dot-notation: `SnapBack` → `ActiveSnapBack` and `useSnapBack` → `useActiveSnapBack` (ADR-0026). They are drop-in replacements for `Active` / `useActive` (`useActiveSnapBack` returns a superset of what `useActive` does), so the `Active` prefix surfaces them right beside what they replace in `DA.` autocomplete instead of hiding elsewhere in the list — no more reaching for `Active` and silently dropping the snap-back you injected.
+- 4da68b5: Rename the snap-back Extension's namespace members so they sit next to their core counterparts in dot-notation: `SnapBack` → `ActiveSnapBack` and `useSnapBack` → `useActiveSnapBack` (ADR-0030). They are drop-in replacements for `Active` / `useActive` (`useActiveSnapBack` returns a superset of what `useActive` does), so the `Active` prefix surfaces them right beside what they replace in `DA.` autocomplete instead of hiding elsewhere in the list — no more reaching for `Active` and silently dropping the snap-back you injected.
 
   The Extension factory (`snapBack()`), its exported types (`SnapBackOptions`, `SnapBackReads`, `SnapBackState`), the `data-snapping` marker and the glossary term "Snap-back" are unchanged — the prefix is purely a dot-notation discoverability device, and only the two channel members live on the namespace.
 
@@ -72,7 +72,7 @@
 
 ### Patch Changes
 
-- f66a081: **Fix:** a Drop Action now enforces a single in-flight drag (ADR-0021). A second concurrent `startDrag` is ignored, which closes two issues:
+- f66a081: **Fix:** a Drop Action now enforces a single in-flight drag (ADR-0029). A second concurrent `startDrag` is ignored, which closes two issues:
 
   - A default `<Item>` (no `customDragHandle`) that wraps a `useDragHandle(id)` element no longer fires the Zone's `onDrop` — and the Item's `onAccept` / `onReject` — twice per Drop. One press previously called `startDrag` twice (the inner trigger plus the bubbled wrapper trigger).
   - Multi-pointer simultaneous drag within one Drop Action is explicitly out of scope: a second finger no longer spins up an incoherent second drag against the single Active / Overlay state.
