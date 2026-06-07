@@ -1232,10 +1232,10 @@ describe('createDropAction — grabbing cursor (ADR-0019)', () => {
   })
 })
 
-// One Active per Drop Action (ADR-0021): a single in-flight drag per Drop
+// One Active per Drop Action (ADR-0029): a single in-flight drag per Drop
 // Action. A second concurrent start — a bubbled double-trigger or a second
 // pointer — is ignored; multi-pointer simultaneous drag is out of scope.
-describe('createDropAction — one Active per Drop Action (ADR-0021)', () => {
+describe('createDropAction — one Active per Drop Action (ADR-0029)', () => {
   test('a default Item wrapping a useDragHandle fires onDrop once, not twice', () => {
     const DA = createDropAction<Data>({ measure })
     const onDrop = vi.fn()

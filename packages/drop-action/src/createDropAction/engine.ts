@@ -71,7 +71,7 @@ type EngineDeps<Data, Accept, Reject> = {
 // drag shows it and ends remove it. Touches `document` only when a drag is
 // actually under way, so import and SSR stay DOM-free. Concurrent drags can only
 // happen across separate Drop Actions (each closure-isolated, ADR-0002;
-// multi-pointer within one action is out of scope, ADR-0021); they share the one
+// multi-pointer within one action is out of scope, ADR-0029); they share the one
 // node, and the first to
 // end clears it — a purely cosmetic edge we accept for a tiny, self-healing
 // implementation (the next completed drag re-adds and clears it cleanly).
@@ -131,7 +131,7 @@ export function createEngine<Data, Accept, Reject>({
 }: EngineDeps<Data, Accept, Reject>) {
   const constraint = resolveActivationConstraint(activationConstraint)
 
-  // One Active per Drop Action (ADR-0021): a single in-flight flag, per engine
+  // One Active per Drop Action (ADR-0029): a single in-flight flag, per engine
   // (= per Drop Action), gates startDrag. It blocks a second concurrent drag —
   // a second pointer (multi-pointer drag is out of scope) and the bubbled
   // double-start of a default Item that wraps a useDragHandle (the inner trigger
@@ -152,7 +152,7 @@ export function createEngine<Data, Accept, Reject>({
     // preventDefault, the browser handles the click/checkbox normally.
     if (!shouldStart(event)) return
 
-    // One Active per Drop Action (ADR-0021): ignore a press while a drag is
+    // One Active per Drop Action (ADR-0029): ignore a press while a drag is
     // already pending or live in this Drop Action.
     if (dragInFlight) return
 
@@ -512,7 +512,7 @@ export function createEngine<Data, Accept, Reject>({
         })
         overlay.place = null
         // Terminal outcome reached (ADR-0013): free this Drop Action for the
-        // next drag (ADR-0021). A resolve includes the async Dropping phase, so
+        // next drag (ADR-0029). A resolve includes the async Dropping phase, so
         // the flag stays set until the Drop truly settles — never freed at the
         // pointerup-time cleanup, which can precede resolution.
         dragInFlight = false
@@ -591,9 +591,10 @@ export function createEngine<Data, Accept, Reject>({
       }
 
       // React to layout reflow and structural DOM change during the drag, not
-      // just scroll/resize (ADR-0026). The ResizeObserver catches a target — or
-      // the page — resizing in place; the MutationObserver catches structural
-      // reflow from non-target elements. `childList` only, never `attributes`,
+      // just scroll/resize (ADR-0026). The ResizeObserver catches a target, its
+      // clipping ancestors (ADR-0031), or the page resizing in place; the
+      // MutationObserver catches structural reflow from non-target elements.
+      // `childList` only, never `attributes`,
       // so the Overlay's per-frame transform writes (ADR-0018) cannot feed back
       // into a re-measure loop. Created only on a real drag, so import/SSR stay
       // DOM-free; guarded for environments without the observers.
@@ -606,14 +607,36 @@ export function createEngine<Data, Accept, Reject>({
           ? new MutationObserver(() => scheduleSettleBurst())
           : null
 
-      // (Re)observe every registered Zone/Hover node for in-place resize
-      // (ADR-0026). `observe` is idempotent, so re-running it on each registry
-      // change is a no-op for already-watched nodes. The document root is
+      // (Re)observe every registered Zone/Hover node AND its clipping-ancestor
+      // chain for in-place resize (ADR-0026, ADR-0031). Watching the node alone
+      // misses a target revealed by an *animating clipper* (a MUI `Collapse`
+      // opening): the child keeps its natural size and the document does not grow,
+      // so only the clipper's box animates — and observing that clipper is what
+      // re-fires the burst until the child is revealed and measured in. The chain
+      // is the one ADR-0023 already resolves; resolve it eagerly here for a target
+      // mounted mid-drag (its chain is not cached until the first burst measure)
+      // and reuse the cache otherwise. `observe` is idempotent, so a shared
+      // ancestor (a common scroller) dedupes and re-running on each registry
+      // change is a no-op for already-watched elements. The document root is
       // observed once at start (below) for growth no single target reports.
+      const observeWithClippers = <R extends { node: HTMLElement }>(
+        registry: Map<string, R>,
+        clippers: Map<string, Element[]>,
+      ) => {
+        for (const [rid, reg] of registry) {
+          ro?.observe(reg.node)
+          let chain = clippers.get(rid)
+          if (!chain) {
+            chain = resolveClippers(reg.node)
+            clippers.set(rid, chain)
+          }
+          for (const c of chain) ro?.observe(c)
+        }
+      }
       const observeTargets = () => {
         if (!ro) return
-        for (const reg of zones.values()) ro.observe(reg.node)
-        for (const reg of hovers.values()) ro.observe(reg.node)
+        observeWithClippers(zones, zoneClippers)
+        observeWithClippers(hovers, hoverClippers)
       }
 
       // The registry changed mid-drag (a target mounted/unmounted, ADR-0026):
@@ -786,7 +809,7 @@ export function createEngine<Data, Accept, Reject>({
       endPending()
       // 'cancel' (a touch swipe beyond tolerance before the delay) abandons
       // activation: we never preventDefault, so the browser keeps scrolling.
-      // The press never became a drag, so free the Drop Action (ADR-0021).
+      // The press never became a drag, so free the Drop Action (ADR-0029).
       if (decision === 'activate') beginDrag(e.clientX, e.clientY)
       else dragInFlight = false
     }
@@ -794,7 +817,7 @@ export function createEngine<Data, Accept, Reject>({
     const onPendingEnd = (e: PointerEvent) => {
       if (e.pointerId !== pointerId) return
       // Released (or cancelled) before activation — it was a click/tap. The
-      // press never became a drag, so free the Drop Action (ADR-0021).
+      // press never became a drag, so free the Drop Action (ADR-0029).
       endPending()
       dragInFlight = false
     }
