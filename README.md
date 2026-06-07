@@ -17,7 +17,7 @@ Headless means it ships behaviour, not looks: it tracks the drag, decides which 
 ## Features
 
 - **Zero runtime dependencies** — only React itself (peer dep, `>=18`).
-- **Tiny and tree-shakeable** — size-budgeted core (≤ 4.5 KB min+brotli); opt-in extras live behind subpaths so you only pay for what you import.
+- **Tiny and tree-shakeable** — size-budgeted core (≤ 4.75 KB min+brotli); opt-in extras live behind subpaths so you only pay for what you import.
 - **No Provider** — `createDropAction()` closes over its own store; just render the components it returns ([ADR-0002](docs/adr/0002-closure-scoped-store-no-provider.md)).
 - **Fast Refresh-friendly** — the factory returns a component, so a shared `export const DnD = createDropAction()` module hot-reloads with a scoped remount instead of a full page reload in Next.js / Vite ([ADR-0015](docs/adr/0015-create-drop-action-returns-channel-component.md)).
 - **Headless** — no styles, no DOM you didn't ask for. Hooks are the primitive (spread `ref` + props onto your own `<tr>`/`<li>` for a zero-extra-node layout); the components are thin sugar with an `as` prop ([ADR-0008](docs/adr/0008-hook-primitive-component-sugar-aschild.md)).
@@ -26,6 +26,7 @@ Headless means it ships behaviour, not looks: it tracks the drag, decides which 
 - **Pluggable collision detection** — `rectIntersection` (default), `pointerWithin`, `closestCenter`, or your own.
 - **Composable modifiers** — `restrictToWindowEdges` (default), axis locks, `snapToGrid(size)`, or your own; the modifier pipeline drives both the overlay and collision ([ADR-0007](docs/adr/0007-modifiers-pipeline-drives-collision.md)).
 - **Flexible drag handles** — the whole item by default, or a custom handle that can live anywhere in the tree ([ADR-0009](docs/adr/0009-drag-handles-no-registry.md)).
+- **Smart grab anchor** — the overlay hangs from the pointer where you grabbed it; the `proportional` default keeps the same fractional grip even when the overlay is a different size from the source, so the pointer never "grabs the void" (configurable per action or per item; [ADR-0021](docs/adr/0021-grab-anchor-engine-config-proportional-default.md)).
 - **TypeScript-first** — generic over your item `data`; the dragged `{ id, data }` is typed end to end.
 - **SSR-safe** — inert on the server, no DOM access until a drag begins.
 - **Spring-loading** — `useHover` / `useDwell` detect the drag dwelling over any element (hover-to-expand folders, auto-scroll regions), even though pointer capture kills DOM hover mid-drag ([ADR-0024](docs/adr/0024-hover-targets-and-core-dwell.md)).
@@ -156,6 +157,22 @@ function NodeHeader({ id }: { id: string }) {
 
 A hover target is **observe-only** — a drop never lands on it and it never affects drop resolution, so it can freely overlap a zone. Reach for `useHover` when you want the raw "is the drag over me" signal (auto-scroll regions, tab-switch) and `useDwell` when you want it timed.
 
+### Grab anchor
+
+Where the travelling overlay hangs from the pointer. By default (`'proportional'`) the overlay holds the same *fractional* grip the press had on the source — identical to a fixed pixel offset when the overlay matches the source, and free of "grabbing the void" when the overlay is smaller. Pin a fixed point instead (e.g. `center`), keep the source-absolute pixel offset (`'preserve'`), or compute one per drag with a function. Set it once per action, or override a single item:
+
+```tsx
+import { createDropAction, center } from 'drop-action'
+
+// Every overlay hangs from its centre…
+const DnD = createDropAction<Card>({ grabAnchor: center })
+
+// …or override just one item back to the source-absolute offset:
+<DnD.Item id="card-1" data={{ label: 'Drag me' }} grabAnchor="preserve">
+  Drag me
+</DnD.Item>
+```
+
 ### Configuration
 
 Pass options to `createDropAction`:
@@ -178,6 +195,9 @@ const DnD = createDropAction<Card>({
 | `collisionDetection` | `rectIntersection` | Strategy that picks which zone is *over*. Also: `pointerWithin`, `closestCenter`, or your own `CollisionDetection`. |
 | `modifiers` | `[restrictToWindowEdges]` | Pipeline that adjusts the overlay transform. Also: `restrictToVerticalAxis`, `restrictToHorizontalAxis`, `snapToGrid(size)`, or your own `Modifier`. |
 | `activationConstraint` | pointer-type-aware | Movement distance / press delay a pointer must cross to start a drag. |
+| `shouldStart` | `defaultShouldStart` | Eligibility guard on the initial press: whether it may become a drag at all. The default refuses presses on interactive content (form controls, editable text) and non-primary buttons. |
+| `grabAnchor` | `'proportional'` | Where the overlay hangs from the pointer. Also: `'preserve'`, a fixed point (e.g. `center`), or a function. Overridable per item. |
+| `grabCursor` | `true` | Show the `grab` / `grabbing` cursor affordance. Set `false` to take full control of the cursor yourself. |
 | `measure` | DOM `getBoundingClientRect` | Override how item/zone geometry is read (useful for tests and non-DOM strategies). |
 
 ## API
