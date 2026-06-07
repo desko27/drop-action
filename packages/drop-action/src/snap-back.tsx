@@ -22,10 +22,12 @@ import type {
 // It imports nothing from the headless core's internals, so a consumer who
 // never imports `drop-action/snap-back` pulls none of it.
 //
-// Why a factory. Those reads are per-Drop-Action — `useActive`,
-// `useResolution`, `useOverlay` are returned by `createDropAction`. Snap-back
-// is generic across Drop Actions, so it takes them and closes over them,
-// mirroring how the core's namespace is produced (ADR-0005).
+// Why an Extension (ADR-0025). Those reads are per-Drop-Action — `useActive`,
+// `useResolution`, `useOverlay` are returned by `createDropAction`. Snap-back is
+// generic across Drop Actions, so `snapBack(options)` returns a function that
+// takes the channel and closes over its reads. Inject it via
+// `createDropAction(options, [snapBack()])` to get `DA.SnapBack` / `DA.useSnapBack`
+// under the namespace, or apply it by hand with `snapBack()(DA)`.
 //
 // How the bounce works. The core states the terminal outcome directly
 // (ADR-0013): when a drag ends it publishes a `resolution` carrying the
@@ -50,10 +52,9 @@ export type SnapBackOptions = {
 }
 
 // The reactive reads Snap-back is built on, all returned by the Drop Action's
-// `createDropAction`. Pass the Drop Action's own hooks, e.g.
-// `createSnapBack({ useActive: DA.useActive, useResolution: DA.useResolution,
-// useOverlay: DA.useOverlay })`. `useOverlay` lets the live-drag ghost ride the
-// engine's imperative Overlay movement (ADR-0018), the same as `<Active>`.
+// `createDropAction`. The `snapBack()` Extension narrows the injected channel to
+// this slice. `useOverlay` lets the live-drag ghost ride the engine's imperative
+// Overlay movement (ADR-0018), the same as `<Active>`.
 export type SnapBackReads<Data> = {
   useActive: () => ActiveSnapshot<Data> | null
   useResolution: () => Resolution<Data> | null
@@ -89,152 +90,158 @@ export type SnapBackState<Data> = {
 // Build a snap-back helper bound to one Drop Action. Pass the Drop Action's
 // reactive reads, so the helper is reusable across Drop Actions while
 // touching only public state.
-export function createSnapBack<Data>(
-  { useActive, useResolution, useOverlay }: SnapBackReads<Data>,
-  options: SnapBackOptions = {},
-) {
+export function snapBack<Data = unknown>(options: SnapBackOptions = {}) {
   const durationMs = options.durationMs ?? DEFAULT_DURATION_MS
   const easing = options.easing ?? DEFAULT_EASING
 
-  function useSnapBack(): SnapBackState<Data> {
-    const active = useActive()
-    const resolution = useResolution()
-    const overlay = useOverlay()
+  // The Extension (ADR-0025): receives the Drop Action's channel and reads the
+  // three public hooks snap-back builds on. The channel's member set is open
+  // (typed `unknown`), so narrow it to the reads we need — the same three
+  // `SnapBackReads`.
+  return (channel: unknown) => {
+    const { useActive, useResolution, useOverlay } =
+      channel as SnapBackReads<Data>
 
-    // The Return currently being animated, captured the instant a non-accept
-    // resolution appears and held through the bounce. Read off `resolution`
-    // (which lingers until the next drag) but kept here so a new drag
-    // starting mid-bounce — which clears `resolution` — cannot pull it out
-    // from under the animation.
-    const bounce = useRef<Resolution<Data> | null>(null)
+    function useSnapBack(): SnapBackState<Data> {
+      const active = useActive()
+      const resolution = useResolution()
+      const overlay = useOverlay()
 
-    // The resolution we have already reacted to. Seeded with whatever is
-    // present on the first render so a resolution lingering from an earlier
-    // drag never bounces a late-mounting consumer: we act on the *transition*
-    // to a new resolution, not on its mere presence.
-    const handled = useRef(resolution)
+      // The Return currently being animated, captured the instant a non-accept
+      // resolution appears and held through the bounce. Read off `resolution`
+      // (which lingers until the next drag) but kept here so a new drag
+      // starting mid-bounce — which clears `resolution` — cannot pull it out
+      // from under the animation.
+      const bounce = useRef<Resolution<Data> | null>(null)
 
-    // 'start' paints the ghost at the captured transform (no transition) for
-    // one frame; 'home' flips the transition on and targets the origin so it
-    // eases back; 'idle' is no bounce.
-    const [phase, setPhase] = useState<'idle' | 'start' | 'home'>('idle')
+      // The resolution we have already reacted to. Seeded with whatever is
+      // present on the first render so a resolution lingering from an earlier
+      // drag never bounces a late-mounting consumer: we act on the *transition*
+      // to a new resolution, not on its mere presence.
+      const handled = useRef(resolution)
 
-    // Capture a fresh Return during render (not in an effect) so the ghost is
-    // mountable on the very render the drag ends — no dropped frame between
-    // Active going null and the bounce appearing. An Accept captures nothing.
-    if (resolution !== handled.current) {
-      handled.current = resolution
-      bounce.current =
-        resolution && resolution.outcome !== 'accepted' ? resolution : null
-    }
+      // 'start' paints the ghost at the captured transform (no transition) for
+      // one frame; 'home' flips the transition on and targets the origin so it
+      // eases back; 'idle' is no bounce.
+      const [phase, setPhase] = useState<'idle' | 'start' | 'home'>('idle')
 
-    // Kick a freshly captured Return into the bounce. Keyed on `resolution`
-    // so it fires exactly when a new one arrives; the render above has
-    // already set `bounce.current` from that same `resolution`, so a truthy
-    // ref here means "a Return to animate". An Accept left it null, so
-    // nothing starts.
-    useEffect(() => {
-      if (resolution && bounce.current) setPhase('start')
-    }, [resolution])
-
-    // One frame after 'start', flip to 'home' so the browser interpolates the
-    // transform from the captured delta to the origin (0,0).
-    useEffect(() => {
-      if (phase !== 'start') return
-      const id = requestAnimationFrame(() => setPhase('home'))
-      return () => cancelAnimationFrame(id)
-    }, [phase])
-
-    // Tear the ghost down once the transition has run its course.
-    useEffect(() => {
-      if (phase !== 'home') return
-      const id = setTimeout(() => {
-        bounce.current = null
-        setPhase('idle')
-      }, durationMs)
-      return () => clearTimeout(id)
-    }, [phase])
-
-    // Live drag: the engine moves the Overlay node imperatively (ADR-0018), so
-    // we hand back its ref + base style and never compute the transform here.
-    if (active) {
-      return {
-        active,
-        snapping: false,
-        item: { id: active.id, data: active.data },
-        outcome: null,
-        style: overlay.style,
-        ref: overlay.ref,
+      // Capture a fresh Return during render (not in an effect) so the ghost is
+      // mountable on the very render the drag ends — no dropped frame between
+      // Active going null and the bounce appearing. An Accept captures nothing.
+      if (resolution !== handled.current) {
+        handled.current = resolution
+        bounce.current =
+          resolution && resolution.outcome !== 'accepted' ? resolution : null
       }
-    }
 
-    // Returning: render the captured Item at the captured transform, then at
-    // the origin once 'home' engages — the transition does the animation.
-    // Keying the ghost off `bounce.current` (not off `phase`) keeps it
-    // mounted across the render where Active first goes null but the kickoff
-    // effect has not run yet, so the Overlay never blinks out.
-    if (bounce.current) {
-      const { homeRect, transform, item, outcome } = bounce.current
-      const atHome = phase === 'home'
-      const x = homeRect.left + (atHome ? 0 : transform.x)
-      const y = homeRect.top + (atHome ? 0 : transform.y)
+      // Kick a freshly captured Return into the bounce. Keyed on `resolution`
+      // so it fires exactly when a new one arrives; the render above has
+      // already set `bounce.current` from that same `resolution`, so a truthy
+      // ref here means "a Return to animate". An Accept left it null, so
+      // nothing starts.
+      useEffect(() => {
+        if (resolution && bounce.current) setPhase('start')
+      }, [resolution])
+
+      // One frame after 'start', flip to 'home' so the browser interpolates the
+      // transform from the captured delta to the origin (0,0).
+      useEffect(() => {
+        if (phase !== 'start') return
+        const id = requestAnimationFrame(() => setPhase('home'))
+        return () => cancelAnimationFrame(id)
+      }, [phase])
+
+      // Tear the ghost down once the transition has run its course.
+      useEffect(() => {
+        if (phase !== 'home') return
+        const id = setTimeout(() => {
+          bounce.current = null
+          setPhase('idle')
+        }, durationMs)
+        return () => clearTimeout(id)
+      }, [phase])
+
+      // Live drag: the engine moves the Overlay node imperatively (ADR-0018), so
+      // we hand back its ref + base style and never compute the transform here.
+      if (active) {
+        return {
+          active,
+          snapping: false,
+          item: { id: active.id, data: active.data },
+          outcome: null,
+          style: overlay.style,
+          ref: overlay.ref,
+        }
+      }
+
+      // Returning: render the captured Item at the captured transform, then at
+      // the origin once 'home' engages — the transition does the animation.
+      // Keying the ghost off `bounce.current` (not off `phase`) keeps it
+      // mounted across the render where Active first goes null but the kickoff
+      // effect has not run yet, so the Overlay never blinks out.
+      if (bounce.current) {
+        const { homeRect, transform, item, outcome } = bounce.current
+        const atHome = phase === 'home'
+        const x = homeRect.left + (atHome ? 0 : transform.x)
+        const y = homeRect.top + (atHome ? 0 : transform.y)
+        return {
+          active: null,
+          snapping: true,
+          item,
+          outcome,
+          style: overlayStyle(
+            x,
+            y,
+            atHome ? `transform ${durationMs}ms ${easing}` : '',
+          ),
+        }
+      }
+
       return {
         active: null,
-        snapping: true,
-        item,
-        outcome,
-        style: overlayStyle(
-          x,
-          y,
-          atHome ? `transform ${durationMs}ms ${easing}` : '',
-        ),
+        snapping: false,
+        item: null,
+        outcome: null,
+        style: overlayStyle(),
       }
     }
 
-    return {
-      active: null,
-      snapping: false,
-      item: null,
-      outcome: null,
-      style: overlayStyle(),
+    type SnapBackProps = {
+      // Renders the Overlay/ghost content for the dragged Item. Receives the
+      // dragged { id, data } — the same shape the core's <Active> yields.
+      children: (item: DraggedItem<Data>) => ReactNode
+      className?: string
+      // Overrides the portal target. Defaults to `document.body`, matching the
+      // core Overlay (ADR-0010).
+      container?: Element | DocumentFragment
     }
+
+    // A drop-in replacement for the core's <Active>: it renders the Overlay
+    // while dragging AND keeps a ghost mounted through the Return bounce. Use
+    // this instead of <Action.Active> to get snap-back for free; it bounces
+    // uniformly on every Return. To vary treatment per outcome, read `outcome`
+    // from `useSnapBack()` and render the ghost yourself.
+    function SnapBack({ children, className, container }: SnapBackProps) {
+      const { item, style, ref, snapping } = useSnapBack()
+      if (!item) return null
+
+      return createPortal(
+        // `data-snapping` marks the Return bounce so a test/E2E can tell a
+        // snap-back-in-progress from a live drag (mirrors `<Item data-dragging>`).
+        <div
+          ref={ref}
+          className={className}
+          style={style}
+          data-snapping={snapping || undefined}
+        >
+          {children(item)}
+        </div>,
+        container ?? document.body,
+      )
+    }
+
+    return { useSnapBack, SnapBack }
   }
-
-  type SnapBackProps = {
-    // Renders the Overlay/ghost content for the dragged Item. Receives the
-    // dragged { id, data } — the same shape the core's <Active> yields.
-    children: (item: DraggedItem<Data>) => ReactNode
-    className?: string
-    // Overrides the portal target. Defaults to `document.body`, matching the
-    // core Overlay (ADR-0010).
-    container?: Element | DocumentFragment
-  }
-
-  // A drop-in replacement for the core's <Active>: it renders the Overlay
-  // while dragging AND keeps a ghost mounted through the Return bounce. Use
-  // this instead of <Action.Active> to get snap-back for free; it bounces
-  // uniformly on every Return. To vary treatment per outcome, read `outcome`
-  // from `useSnapBack()` and render the ghost yourself.
-  function SnapBack({ children, className, container }: SnapBackProps) {
-    const { item, style, ref, snapping } = useSnapBack()
-    if (!item) return null
-
-    return createPortal(
-      // `data-snapping` marks the Return bounce so a test/E2E can tell a
-      // snap-back-in-progress from a live drag (mirrors `<Item data-dragging>`).
-      <div
-        ref={ref}
-        className={className}
-        style={style}
-        data-snapping={snapping || undefined}
-      >
-        {children(item)}
-      </div>,
-      container ?? document.body,
-    )
-  }
-
-  return { useSnapBack, SnapBack }
 }
 
 // The shared Overlay style: portalled, fixed at (0,0), positioned purely by

@@ -32,6 +32,8 @@ export type {
   DropOutcome,
   DropStatus,
   DropVerdict,
+  DwellHandler,
+  Extension,
   GrabAnchor,
   GrabAnchorArgs,
   GrabAnchorPoint,
@@ -45,6 +47,7 @@ export type {
   Rect,
   ShouldStart,
   Transform,
+  UseDwellOptions,
   UseItemOptions,
   ZoneDropHandler,
 } from './createDropAction/types.public'

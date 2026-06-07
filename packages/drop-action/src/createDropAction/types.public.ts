@@ -60,9 +60,10 @@ export type MeasureTarget = {
   node: HTMLElement
   id: string
   // 'overlay' measures the rendered Active Overlay's own footprint, which can
-  // differ from the source Item's (ADR-0017); a measure that ignores `type`
-  // treats it like an Item.
-  type: 'item' | 'zone' | 'overlay'
+  // differ from the source Item's (ADR-0017); 'hover' measures a Hover target,
+  // clipped like a Zone (ADR-0024); a measure that ignores `type` treats them
+  // all like an Item.
+  type: 'item' | 'zone' | 'overlay' | 'hover'
 }
 export type Measure = (target: MeasureTarget) => Rect
 
@@ -189,6 +190,38 @@ export type UseItemOptions<Data = unknown, Accept = void, Reject = void> = {
   // then `'proportional'`.
   grabAnchor?: GrabAnchor
 }
+
+// The dwell callback (ADR-0024): fired once when the drag settles over a Hover
+// target. Receives the dragged Item `{ id, data }` (the Active), so a generic
+// handler can branch on what is being dragged (spring-load is one use;
+// auto-scroll and tab-switch are others).
+export type DwellHandler<Data = unknown> = (item: DraggedItem<Data>) => void
+
+// Options for the `useDwell` primitive (ADR-0024). `onDwell` fires once when the
+// cursor stays within `tolerance` pixels of a settle point for `dwellMs`
+// continuous milliseconds while over the Hover target, re-arming only after the
+// drag leaves the target or moves off the settle point.
+export type UseDwellOptions<Data = unknown> = {
+  onDwell: DwellHandler<Data>
+  // How long (ms) the cursor must stay settled before `onDwell` fires.
+  // Defaults to 500.
+  dwellMs?: number
+  // The settle radius in CSS pixels: moving more than this from the settle
+  // point re-anchors and restarts the timer, so sweeping through a target never
+  // fires. Defaults to 8.
+  tolerance?: number
+}
+
+// An Extension (ADR-0025): an opt-in module injected into a Drop Action's
+// namespace via `createDropAction(options, [ext(), …])`. It receives the channel
+// and returns members to merge under it, reading only the channel's public
+// members. Packaged as a tree-shakeable subpath module (ADR-0004), so a consumer
+// who never imports it bundles none of it. `channel` is typed `unknown` because
+// the member set is open — an Extension narrows it to the slice it needs (e.g.
+// snap-back to `useActive` / `useResolution` / `useOverlay`).
+export type Extension<Members extends object = object> = (
+  channel: unknown,
+) => Members
 
 // The accessibility + defensive-CSS surface shared by the default Item
 // handle and a custom `useDragHandle` (ADR-0011).

@@ -13,6 +13,10 @@ import type { DraggedItem } from './types.public'
 export function createStore<Data>() {
   let active: ActiveSnapshot<Data> | null = null
   let over: string | null = null
+  // The single Hover target the drag's cursor is currently inside (ADR-0024),
+  // resolved in a pass separate from `over` so it never affects Drop
+  // resolution. Like `over`, it is emitted on transitions only (ADR-0018).
+  let hover: string | null = null
   let resolution: Resolution<Data> | null = null
   // The dragged { id, data } derived from `active`, cached so `useOver` returns
   // a referentially-stable value while the Active Item is unchanged.
@@ -37,6 +41,9 @@ export function createStore<Data>() {
     getOverItem: (zoneId: string): DraggedItem<Data> | null =>
       over === zoneId ? item : null,
     isActiveId: (id: string) => active?.id === id,
+    // Whether `id` is the current Hover target — a boolean, so a Hover target
+    // re-renders only when its own membership flips (ADR-0018, ADR-0024).
+    isHoverId: (id: string) => hover === id,
 
     // Inert, document-free server reads (ADR-0002, ADR-0011). Each returns a
     // constant, so it is trivially stable across calls.
@@ -44,6 +51,7 @@ export function createStore<Data>() {
     getServerResolution: () => null,
     getServerOverItem: () => null,
     getServerIsActiveId: () => false,
+    getServerIsHoverId: () => false,
 
     // The engine's only write. Just the supplied keys change, so `active` keeps
     // its reference across an Over-only change (no `useActive` re-render then);
@@ -51,6 +59,7 @@ export function createStore<Data>() {
     commit: (next: {
       active?: ActiveSnapshot<Data> | null
       over?: string | null
+      hover?: string | null
       resolution?: Resolution<Data> | null
     }) => {
       if ('active' in next) {
@@ -58,6 +67,7 @@ export function createStore<Data>() {
         item = active ? { id: active.id, data: active.data } : null
       }
       if ('over' in next) over = next.over ?? null
+      if ('hover' in next) hover = next.hover ?? null
       if ('resolution' in next) resolution = next.resolution ?? null
       emit()
     },

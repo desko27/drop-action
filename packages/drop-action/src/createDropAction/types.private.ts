@@ -2,6 +2,7 @@ import type {
   DraggedItem,
   DropOutcome,
   DropStatus,
+  DwellHandler,
   GrabAnchor,
   Rect,
   Transform,
@@ -72,4 +73,24 @@ export type ItemRegistration<Data, Accept = void, Reject = void> = {
 export type ZoneRegistration<Data = unknown, Accept = void, Reject = void> = {
   node: HTMLElement
   onDropRef: Ref<ZoneDropHandler<Data, Accept, Reject> | undefined>
+}
+
+// The resolved dwell configuration carried by a Hover target's registration
+// (ADR-0024). `undefined` on the ref marks a pure Hover target (`useHover`)
+// with no timing; `useDwell` sets it with defaults already applied, so the
+// engine reads concrete `dwellMs` / `tolerance` values.
+export type DwellConfig<Data = unknown> = {
+  onDwell: DwellHandler<Data>
+  dwellMs: number
+  tolerance: number
+}
+
+// A Hover target registers its node for the per-frame pointer hit-test
+// (ADR-0024), together with an optional dwell config. Observe-only — a Drop
+// never lands on it. A ref keeps the latest config so re-renders never
+// re-register the node; `dwellRef.current` is `undefined` for a pure `useHover`
+// target and a `DwellConfig` for a `useDwell` one.
+export type HoverRegistration<Data = unknown> = {
+  node: HTMLElement
+  dwellRef: Ref<DwellConfig<Data> | undefined>
 }

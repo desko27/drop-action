@@ -17,7 +17,7 @@ Headless means it ships behaviour, not looks: it tracks the drag, decides which 
 ## Features
 
 - **Zero runtime dependencies** — only React itself (peer dep, `>=18`).
-- **Tiny and tree-shakeable** — size-budgeted core (≤ 3.25 KB min+gzip); opt-in extras live behind subpaths so you only pay for what you import.
+- **Tiny and tree-shakeable** — size-budgeted core (≤ 4.5 KB min+brotli); opt-in extras live behind subpaths so you only pay for what you import.
 - **No Provider** — `createDropAction()` closes over its own store; just render the components it returns ([ADR-0002](docs/adr/0002-closure-scoped-store-no-provider.md)).
 - **Fast Refresh-friendly** — the factory returns a component, so a shared `export const DnD = createDropAction()` module hot-reloads with a scoped remount instead of a full page reload in Next.js / Vite ([ADR-0015](docs/adr/0015-create-drop-action-returns-channel-component.md)).
 - **Headless** — no styles, no DOM you didn't ask for. Hooks are the primitive (spread `ref` + props onto your own `<tr>`/`<li>` for a zero-extra-node layout); the components are thin sugar with an `as` prop ([ADR-0008](docs/adr/0008-hook-primitive-component-sugar-aschild.md)).
@@ -28,7 +28,8 @@ Headless means it ships behaviour, not looks: it tracks the drag, decides which 
 - **Flexible drag handles** — the whole item by default, or a custom handle that can live anywhere in the tree ([ADR-0009](docs/adr/0009-drag-handles-no-registry.md)).
 - **TypeScript-first** — generic over your item `data`; the dragged `{ id, data }` is typed end to end.
 - **SSR-safe** — inert on the server, no DOM access until a drag begins.
-- **Opt-in animation** — snap-back ships as a separate `drop-action/snap-back` module ([ADR-0004](docs/adr/0004-headless-core-optional-subpath-modules.md)).
+- **Spring-loading** — `useHover` / `useDwell` detect the drag dwelling over any element (hover-to-expand folders, auto-scroll regions), even though pointer capture kills DOM hover mid-drag ([ADR-0024](docs/adr/0024-hover-targets-and-core-dwell.md)).
+- **Opt-in extras as Extensions** — snap-back ships as a tree-shakeable `drop-action/snap-back` module you inject under the namespace with `.extend()` ([ADR-0004](docs/adr/0004-headless-core-optional-subpath-modules.md), [ADR-0025](docs/adr/0025-extensions-namespace-injection.md)).
 
 ## Installation
 
@@ -120,22 +121,40 @@ A zone decides through `{ accept, reject }`. It can `await` before deciding; `re
 
 Each verdict can carry a payload to the item — `accept(payload)` / `reject(payload)` flow to the item's `onAccept` / `onReject`, typed via `createDropAction<Data, Accept, Reject>`.
 
-### Snap-back (opt-in module)
+### Snap-back (opt-in Extension)
 
-The core is unopinionated about animation. Import `drop-action/snap-back` to ease the overlay back to its origin on any **return** (a reject, a no-drop, or a cancel — every ending except an accept):
+The core is unopinionated about animation. `drop-action/snap-back` eases the overlay back to its origin on any **return** (a reject, a no-drop, or a cancel — every ending except an accept). It ships as an **Extension**: inject it with `.extend()` to get `DnD.SnapBack` / `DnD.useSnapBack` under the namespace:
 
 ```tsx
-import { createSnapBack } from 'drop-action/snap-back'
+import { createDropAction } from 'drop-action'
+import { snapBack } from 'drop-action/snap-back'
 
-const { SnapBack } = createSnapBack({
-  useActive: DnD.useActive,
-  useResolution: DnD.useResolution,
-})
+const DnD = createDropAction<Card>().extend(snapBack<Card>())
 
-// Use <SnapBack> in place of <DnD.Active>: it renders the overlay while
+// Use <DnD.SnapBack> in place of <DnD.Active>: it renders the overlay while
 // dragging AND keeps a ghost mounted that animates home on a return.
-<SnapBack>{({ data }) => <div className="overlay">{data.label}</div>}</SnapBack>
+<DnD.SnapBack>{({ data }) => <div className="overlay">{data.label}</div>}</DnD.SnapBack>
 ```
+
+`.extend(...)` takes one or more Extensions and merges their members under the channel; it is a method (not a second `createDropAction` argument) so the Extension types stay inferred even when you fix `Data` explicitly. To apply one by hand instead, call it: `const { SnapBack } = snapBack<Card>()(DnD)`.
+
+### Spring-loading (hover & dwell)
+
+During a drag, `setPointerCapture` makes the source own the pointer, so other elements never get DOM `hover`. The engine is then the only reliable source of "the cursor is over element X" — so hover/dwell live in the core. `useHover(id)` reports it; `useDwell(id, { onDwell })` fires once the cursor **settles** over the element for `dwellMs` (staying within `tolerance` px) — the building block for spring-loaded folders that expand on drag-over:
+
+```tsx
+function NodeHeader({ id }: { id: string }) {
+  const [open, setOpen] = useState(false)
+  const { ref, isDwelling } = DnD.useDwell(id, {
+    onDwell: () => setOpen(true), // expand after the drag dwells ~500ms
+    dwellMs: 500,                 // default
+    tolerance: 8,                 // settle radius in px; default
+  })
+  return <div ref={ref} data-dwelling={isDwelling || undefined} />
+}
+```
+
+A hover target is **observe-only** — a drop never lands on it and it never affects drop resolution, so it can freely overlap a zone. Reach for `useHover` when you want the raw "is the drag over me" signal (auto-scroll regions, tab-switch) and `useDwell` when you want it timed.
 
 ### Configuration
 
@@ -163,7 +182,7 @@ const DnD = createDropAction<Card>({
 
 ## API
 
-`createDropAction<Data>(options?)` returns the **Drop Action** — a channel component carrying the members below; reach for them with dot-notation (`DnD.Zone`, `DnD.useOver`, …) and don't render the Drop Action itself ([ADR-0015](docs/adr/0015-create-drop-action-returns-channel-component.md)). Two optional generics — `createDropAction<Data, Accept, Reject>` — type the `accept` / `reject` payloads; both default to `void`.
+`createDropAction<Data>(options?)` returns the **Drop Action** — a channel component carrying the members below; reach for them with dot-notation (`DnD.Zone`, `DnD.useOver`, …) and don't render the Drop Action itself ([ADR-0015](docs/adr/0015-create-drop-action-returns-channel-component.md)). Two optional generics — `createDropAction<Data, Accept, Reject>` — type the `accept` / `reject` payloads; both default to `void`. Inject opt-in **Extensions** (e.g. snap-back) with `.extend(...)` ([ADR-0025](docs/adr/0025-extensions-namespace-injection.md)).
 
 | Member | Kind | Purpose |
 |--------|------|---------|
@@ -175,7 +194,10 @@ const DnD = createDropAction<Card>({
 | `useDragHandle(id)` | hook | Props for a custom handle that can live outside the item's subtree. |
 | `useActive()` | hook | The item currently in flight (`{ id, data, status, … }`) or `null`. |
 | `useOver(zoneId)` | hook | The dragged `{ id, data }` while `zoneId` is *over*, else `null`. |
+| `useHover(id)` | hook | Register an observe-only hover target; returns `{ ref, isHovering }` (true while the drag's cursor is over it). A drop never lands here. |
+| `useDwell(id, opts)` | hook | Spring-load timing over a hover target: `onDwell` fires once the cursor settles for `dwellMs`. Returns `{ ref, isDwelling }`. |
 | `useResolution()` | hook | How the last drag ended (`accepted` / `rejected` / `no-drop` / `cancelled`), kept until the next drag. |
+| `extend(...exts)` | method | Inject Extensions (e.g. `snapBack()`) under the namespace, returning the channel widened with their members. |
 
 A drag ends in exactly one terminal **outcome**: `accepted`, `rejected`, `no-drop`, or `cancelled`. The three non-accept endings form a **return** (what snap-back animates). See [`CONTEXT.md`](CONTEXT.md) for the full glossary.
 

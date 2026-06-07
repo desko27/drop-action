@@ -1,20 +1,15 @@
 import { createDropAction } from 'drop-action'
-import { createSnapBack } from 'drop-action/snap-back'
+import { snapBack } from 'drop-action/snap-back'
 import { useState } from 'react'
 
 type CardData = { label: string }
 
-const DA = createDropAction<CardData>()
-
-// Snap-back is the opt-in subpath module: any Return (a Reject, a No-drop, or
-// a Cancel) eases the Overlay back to the Item's origin rect; an Accept does
-// not. <SnapBack> stands in for the core <Active>, rendering the Overlay and
-// keeping a ghost through the bounce.
-const { SnapBack } = createSnapBack({
-  useActive: DA.useActive,
-  useResolution: DA.useResolution,
-  useOverlay: DA.useOverlay,
-})
+// Snap-back is an opt-in Extension (ADR-0025): `.extend()` injects it under the
+// namespace, exposing DA.SnapBack / DA.useSnapBack. Any Return (a Reject, a
+// No-drop, or a Cancel) eases the Overlay back to the Item's origin rect; an
+// Accept does not. <DA.SnapBack> stands in for the core <Active>, rendering the
+// Overlay and keeping a ghost through the bounce.
+const DA = createDropAction<CardData>().extend(snapBack<CardData>())
 
 // The accepting slot reads useOver to highlight itself while the Active Item
 // is the Over Zone — at most one Zone is Over at a time.
@@ -83,9 +78,9 @@ export function App() {
         <RejectSlot />
       </div>
 
-      <SnapBack>
+      <DA.SnapBack>
         {({ data }) => <div className="card card--overlay">{data.label}</div>}
-      </SnapBack>
+      </DA.SnapBack>
     </main>
   )
 }

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createDropAction } from '../main'
 import type { DraggedItem, Measure, Rect, ZoneDropHandler } from '../main'
-import { createSnapBack } from '../snap-back'
+import { snapBack } from '../snap-back'
 
 type Data = { label: string }
 
@@ -73,11 +73,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
       })
       // No accept() / reject() -> an inert Reject.
     }
-    const { SnapBack } = createSnapBack({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { SnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -117,11 +113,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
   test('a synchronous Accept does not snap back (no bounce, Overlay gone)', async () => {
     const DA = createDropAction<Data>({ measure })
     const onAccept = vi.fn()
-    const { SnapBack } = createSnapBack({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { SnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -159,11 +151,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
         resolveReject = r
       })
     }
-    const { useSnapBack } = createSnapBack({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { useSnapBack } = snapBack<Data>()(DA)
 
     function Probe() {
       const { snapping, item } = useSnapBack()
@@ -204,11 +192,7 @@ describe('drop-action/snap-back — Reject bounce', () => {
 
   test('the SnapBack overlay carries data-snapping only during the bounce', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { SnapBack } = createSnapBack({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { SnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -259,11 +243,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
       })
       accept()
     }
-    const { SnapBack } = createSnapBack({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { SnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -292,11 +272,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
 
   test('releasing over no Zone (a No-drop) snaps back', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { SnapBack } = createSnapBack({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { SnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -323,11 +299,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
 
   test('cancelling with Escape snaps back from wherever the Overlay is', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { SnapBack } = createSnapBack({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { SnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -354,11 +326,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
 
   test('pointercancel snaps back likewise', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { SnapBack } = createSnapBack({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { SnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -399,11 +367,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
             height: 100,
           }
     const DA = createDropAction<Data>({ measure: scrollMeasure })
-    const { SnapBack } = createSnapBack({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { SnapBack } = snapBack<Data>()(DA)
 
     render(
       <>
@@ -433,11 +397,7 @@ describe('drop-action/snap-back — every Return bounces', () => {
 
   test('useSnapBack exposes the Return outcome so consumers can vary treatment', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { useSnapBack } = createSnapBack({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { useSnapBack } = snapBack<Data>()(DA)
 
     function Probe() {
       const { outcome } = useSnapBack()

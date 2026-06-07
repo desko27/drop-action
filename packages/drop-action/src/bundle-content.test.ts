@@ -26,9 +26,9 @@ describe('bundle content', () => {
 
   // The first opt-in subpath module (drop-action/snap-back, ADR-0004) ships
   // its own ESM/CJS + types pair under the same packaging pattern.
-  it('snap-back bundle exposes createSnapBack', async () => {
+  it('snap-back bundle exposes snapBack', async () => {
     const code = await readFile(resolve(DIST, 'snap-back.js'), 'utf-8')
-    expect(code).toContain('createSnapBack')
+    expect(code).toContain('snapBack')
   })
 
   it.each([
@@ -46,7 +46,7 @@ describe('bundle content', () => {
   // consumer who never imports drop-action/snap-back ships none of it.
   it('main bundle pulls no snap-back code', async () => {
     const code = await readFile(resolve(DIST, 'main.js'), 'utf-8')
-    expect(code).not.toContain('createSnapBack')
-    expect(code).not.toContain('useSnapBack')
+    expect(code).not.toContain('snapBack')
+    expect(code).not.toContain('SnapBack')
   })
 })
