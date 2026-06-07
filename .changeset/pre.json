@@ -12,6 +12,7 @@
     "drop-verdict-accept-reject",
     "grab-anchor",
     "grab-cursor",
+    "hover-dwell-extensions",
     "imperative-overlay",
     "live-collision-rects",
     "modifiers-overlay-rect",
