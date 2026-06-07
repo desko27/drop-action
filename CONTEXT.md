@@ -40,10 +40,12 @@ travel.
 _Avoid_: Ghost, clone, preview, drag image.
 
 **Active**:
-The Item currently being dragged — the one travelling. Its `{ id, data }`
-and resolution `status` are read with `useActive()`, and it is rendered
-in flight by `<DropAction.Active>` (which mounts into the Overlay). The
-naming holds the relationship: the Active Item carries this data.
+The Item currently being dragged — the one travelling. Its `{ id, data }` is
+fixed at drag-start and stays stable for the whole flight (ADR-0027), read with
+`useActive()` alongside the resolution `status`; it is rendered in flight by
+`<DropAction.Active>` (which mounts into the Overlay). The naming holds the
+relationship: the Active Item carries this data — the same value every reader
+(reactive or imperative) sees until the drag ends.
 _Avoid_: Dragging, current, selected, grabbed.
 
 **Drag handle**:
@@ -185,7 +187,8 @@ A first-party add-on injected into a Drop Action's namespace through
 members. Shipped as a tree-shakeable subpath module (ADR-0004), so a consumer
 who never imports it bundles none of it; the core carries only a tiny generic
 merge. Snap-back is an Extension; Dwell, by contrast, is **core** — its timer
-needs the engine's per-frame pointer (ADR-0018), which an Extension cannot see.
+needs the engine's per-frame pointer (ADR-0018), which an Extension cannot see —
+a loop-bound behaviour stays in core (ADR-0028).
 _Avoid_: Plugin, middleware, mixin, addon.
 
 **Snap-back**:
