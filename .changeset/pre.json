@@ -7,6 +7,7 @@
   "changesets": [
     "activation-distance-default",
     "activation-guard",
+    "activesnapback-member-name",
     "channel-component-return",
     "clip-zone-collision-rects",
     "drop-verdict-accept-reject",
@@ -15,6 +16,7 @@
     "hover-dwell-extensions",
     "imperative-overlay",
     "live-collision-rects",
+    "live-remeasure-dom-layout",
     "modifiers-overlay-rect",
     "one-active-per-drop-action",
     "remove-aschild",
