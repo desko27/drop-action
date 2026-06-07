@@ -329,6 +329,9 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
       (node: HTMLElement | null) => {
         if (node) zones.set(id, { node, onDropRef })
         else zones.delete(id)
+        // A Zone mounting/unmounting mid-drag re-measures the live drag so it
+        // enters or leaves collision at once, not on the next scroll (ADR-0026).
+        engine.notifyRegistryChange()
       },
       [id],
     )
@@ -350,6 +353,9 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
       (node: HTMLElement | null) => {
         if (node) hovers.set(id, { node, dwellRef })
         else hovers.delete(id)
+        // A Hover/Dwell target mounting mid-drag (a spring-opened level) enters
+        // the per-frame pass at once instead of on the next scroll (ADR-0026).
+        engine.notifyRegistryChange()
       },
       // `dwellRef` is a stable useRef from the caller; listed to satisfy the
       // exhaustive-deps lint without ever re-registering the node.
