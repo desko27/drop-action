@@ -217,7 +217,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
 
   // The Overlay primitive (ADR-0018): spread `ref` + `style` onto the Overlay
   // element. The engine measures the node for collision (ADR-0017) and moves it
-  // imperatively each frame. `<Active>` / `<SnapBack>` are sugar over this; a
+  // imperatively each frame. `<Active>` / `<ActiveSnapBack>` are sugar over this; a
   // headless consumer can render their own Overlay element with it.
   function useOverlay(): OverlayProps {
     const ref = useCallback((node: HTMLElement | null) => {
@@ -497,7 +497,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
 
   // Apply Extensions (ADR-0025): `.extend(...)` takes one or more Extensions,
   // calls each with the channel, and merges the returned members under it, so
-  // they read as `DA.SnapBack`, `DA.useSnapBack`, … An Extension reads only
+  // they read as `DA.ActiveSnapBack`, `DA.useActiveSnapBack`, … An Extension reads only
   // public members, so the core carries just this tiny merge — each Extension's
   // code arrives via its own subpath import, keeping it tree-shakeable
   // (ADR-0004). It is a method, not a second `createDropAction` argument,
