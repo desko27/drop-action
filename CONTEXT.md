@@ -70,6 +70,19 @@ Drag handle, even a custom one, is an interior region); a spatially distant
 handle is out of scope.
 _Avoid_: Drag image offset, hotspot, pickup point, pivot.
 
+**Hover target**:
+An element registered in a Drop Action to detect when the drag is over it,
+without ever being droppable — a Drop never lands on it. It lives in its own
+registry, separate from Zones (its own id space, its own per-frame pointer
+hit-test — always the cursor inside the target's clipped rect, never the
+Overlay or the pluggable Collision detection), so a drag may **Hover** a Hover
+target and be **Over** a Zone at the same time. Observed with
+`useHover(id) → { ref, isHovering }`; at most one Hover target is the current
+one per Drop Action. Timing how long the drag stays over it is **Dwell**'s job,
+not the Hover target's.
+_Avoid_: Watch target, drop target, sensor, dwell target (Dwell is the timed
+behaviour, not the element).
+
 ### Drop resolution
 
 **Drop**:
@@ -124,8 +137,20 @@ one Zone is Over at a time per Drop Action. Which Zone is Over is
 resolved input-agnostically — by collision detection during a pointer
 drag, or by a keyboard driver (by Zone index) once that module is
 present. Read with `useOver(zoneId)`, which reports the Active
-`{ id, data }` while that Zone is the Over one.
-_Avoid_: Hover, target, current zone.
+`{ id, data }` while that Zone is the Over one. Over is droppable-only and is
+the sibling of **Hover**: a Hover target the drag sits over is resolved in a
+separate pass and is Hovered, never Over.
+_Avoid_: target, current zone; and Hover — that is the distinct observe-only
+relationship (CONTEXT.md — Hover), not a synonym for Over.
+
+**Hover**:
+The single Hover target the drag's cursor is currently inside, per Drop
+Action — the observe-only sibling of **Over**. Resolved by its own per-frame
+pointer hit-test (the cursor within the target's clipped rect), separate from
+the Zone collision pass, so it never affects Drop resolution and a drag may
+Hover one target while Over a Zone. Read with `useHover(id)`, which returns
+`isHovering`; timing a settled Hover is **Dwell**.
+_Avoid_: Over (that is the droppable sibling), watch, mouseover.
 
 **Collision detection**:
 The pluggable strategy that picks which Zone (if any) is Over, given the
@@ -154,6 +179,15 @@ _Avoid_: Constraint (that is the Activation constraint), transformer.
 
 ### Optional modules
 
+**Extension**:
+A first-party add-on injected into a Drop Action's namespace through
+`createDropAction(options).extend(ext(), …)`, built only on the channel's public
+members. Shipped as a tree-shakeable subpath module (ADR-0004), so a consumer
+who never imports it bundles none of it; the core carries only a tiny generic
+merge. Snap-back is an Extension; Dwell, by contrast, is **core** — its timer
+needs the engine's per-frame pointer (ADR-0018), which an Extension cannot see.
+_Avoid_: Plugin, middleware, mixin, addon.
+
 **Snap-back**:
 The Return animation: it eases the Overlay back to its home — the Overlay
 **centered on** the Item's origin rect (its live position at release) —
@@ -164,6 +198,21 @@ part of the headless core — it ships as the opt-in subpath module
 `drop-action/snap-back`, built on the resolution state and the home rect the
 core exposes.
 _Avoid_: Bounce-back, revert, reject animation (it is not Reject-only).
+
+**Dwell**:
+The drag *settling* over a Hover target — the cursor staying within
+`tolerance` pixels for `dwellMs` continuously — which fires `onDwell(item)`
+once and re-arms only after the drag leaves the target or moves off the settle
+point. Read with `useDwell(id, { onDwell, dwellMs, tolerance }) → { ref, isDwelling }`.
+The engine owns the timer (not the store, not the app): detecting "moved too
+much inside the area" needs the per-frame pointer the store deliberately
+withholds (ADR-0018), so Dwell is core alongside Hover — a sibling of the
+Activation constraint's delay+tolerance gesture. The spring-loaded folder
+(hover-to-expand on drag-over) is one use; auto-scroll regions and tab-switch
+are others.
+_Avoid_: Hover (that is the immediate, untimed relationship — Dwell is the
+*settled* one), spring-load (one use of it), long-press (that is pointer-down
+timing).
 
 **Sortable**:
 Reorderable-list behaviour — the auto-opening gap/placeholder showing
@@ -217,3 +266,9 @@ _Avoid_: Threshold (bare), tolerance, sensor delay.
   **Return**, which **Snap-back** animates.
 - Exactly one **Item** is **Active** at a time across a Drop Action; the
   **Overlay** renders that Active Item until the Drop resolves.
+- **Hover targets** are resolved in their own per-frame pointer pass, in
+  parallel with Zones and never affecting Drop resolution — a drag may **Hover**
+  one target while **Over** a Zone. **Dwell** times the drag settling over a
+  Hover target and fires `onDwell`; its timer lives in the core engine because
+  it needs the per-frame pointer. **Snap-back** is an **Extension** injected
+  into the namespace.

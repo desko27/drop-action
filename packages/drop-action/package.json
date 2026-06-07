@@ -47,11 +47,11 @@
   "size-limit": [
     {
       "path": "dist/main.js",
-      "limit": "4 KB"
+      "limit": "4.5 KB"
     },
     {
       "path": "dist/main.cjs",
-      "limit": "4 KB"
+      "limit": "4.5 KB"
     },
     {
       "path": "dist/snap-back.js",

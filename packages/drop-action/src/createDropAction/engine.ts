@@ -4,9 +4,14 @@ import {
   resolveActivationConstraint,
 } from './activation'
 import { clipToVisible, resolveClippers } from './clip'
-import type { CollisionDetection, ZoneRect } from './collision'
+import {
+  type CollisionDetection,
+  pointerWithin,
+  type ZoneRect,
+} from './collision'
 import type {
   ActiveSnapshot,
+  HoverRegistration,
   ItemRegistration,
   OverlayRegistry,
   Resolution,
@@ -29,6 +34,7 @@ import type {
 type Commit<Data> = (next: {
   active?: ActiveSnapshot<Data> | null
   over?: string | null
+  hover?: string | null
   resolution?: Resolution<Data> | null
 }) => void
 
@@ -37,6 +43,9 @@ type EngineDeps<Data, Accept, Reject> = {
   // A Zone carries its single onDrop with its node (ADR-0014): a Drop fires
   // the one handler registered for the Over Zone, if any.
   zones: Map<string, ZoneRegistration<Data, Accept, Reject>>
+  // Hover targets (ADR-0024): observe-only, in their own registry so they
+  // never affect Drop resolution. Each carries an optional dwell config.
+  hovers: Map<string, HoverRegistration<Data>>
   measure: Measure
   modifiers: Modifier[]
   collisionDetection: CollisionDetection
@@ -68,6 +77,19 @@ type EngineDeps<Data, Accept, Reject> = {
 // implementation (the next completed drag re-adds and clears it cleanly).
 const GRABBING_STYLE_ID = 'drop-action-grabbing-cursor'
 
+// A throwaway rect for the Hover pass (ADR-0024). `pointerWithin` ignores its
+// `overlayRect` (it tests the pointer against the target rects), so the Hover
+// hit-test reuses that detector with this zero rect rather than computing an
+// Overlay rect it would discard. Frozen so the pass allocates nothing.
+const ZERO_RECT: Rect = {
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  width: 0,
+  height: 0,
+}
+
 const showGrabbingCursor = () => {
   if (document.getElementById(GRABBING_STYLE_ID)) return
   const style = document.createElement('style')
@@ -96,6 +118,7 @@ const hideGrabbingCursor = () => {
 export function createEngine<Data, Accept, Reject>({
   items,
   zones,
+  hovers,
   measure,
   modifiers,
   collisionDetection,
@@ -158,29 +181,38 @@ export function createEngine<Data, Accept, Reject>({
       // re-measures below just re-read their boxes. Covers every Zone, including
       // ones that start fully clipped, so they can re-enter when scrolled in.
       const zoneClippers = new Map<string, Element[]>()
-      const measureZones = () => {
+      const hoverClippers = new Map<string, Element[]>()
+      const measureClipped = <R extends { node: HTMLElement }>(
+        registry: Map<string, R>,
+        clippers: Map<string, Element[]>,
+        type: 'zone' | 'hover',
+      ): ZoneRect[] => {
         const rects: ZoneRect[] = []
-        for (const [zoneId, zone] of zones) {
-          let clippers = zoneClippers.get(zoneId)
-          if (!clippers) {
-            clippers = resolveClippers(zone.node)
-            zoneClippers.set(zoneId, clippers)
+        for (const [rid, reg] of registry) {
+          let chain = clippers.get(rid)
+          if (!chain) {
+            chain = resolveClippers(reg.node)
+            clippers.set(rid, chain)
           }
-          // Clip the raw rect to the Zone's visible region (ADR-0023): only the
-          // part not scrolled out behind an overflow ancestor can be Over. A
-          // Zone clipped to nothing drops out of the snapshot entirely — the
-          // exclusion is re-applied every measure, so a Zone scrolled back into
-          // view re-enters and becomes Over-able again.
-          const raw = measure({ node: zone.node, id: zoneId, type: 'zone' })
-          const rect = clipToVisible(raw, clippers)
-          if (rect) rects.push({ id: zoneId, rect })
+          // Clip the raw rect to the visible region (ADR-0023): only the part
+          // not scrolled out behind an overflow ancestor can be Over (a Zone)
+          // or Hovered (a Hover target). A node clipped to nothing drops out of
+          // the snapshot entirely — the exclusion is re-applied every measure,
+          // so one scrolled back into view re-enters and becomes eligible again.
+          const raw = measure({ node: reg.node, id: rid, type })
+          const rect = clipToVisible(raw, chain)
+          if (rect) rects.push({ id: rid, rect })
         }
         return rects
       }
+      const measureZones = () => measureClipped(zones, zoneClippers, 'zone')
+      const measureHovers = () => measureClipped(hovers, hoverClippers, 'hover')
 
       // Zone rects are re-measured during the drag (ADR-0017), so this is a
-      // mutable snapshot, refreshed on scroll/resize below.
+      // mutable snapshot, refreshed on scroll/resize below. Hover-target rects
+      // (ADR-0024) ride the same refresh.
       let zoneRects = measureZones()
+      let hoverRects = measureHovers()
       // The Overlay's own size, measured once when its node is first available
       // (ADR-0017); until then, fall back to the source size.
       let overlaySize: { width: number; height: number } | null = null
@@ -188,6 +220,13 @@ export function createEngine<Data, Accept, Reject>({
       let latestY = activateY
       let transform: Transform = { x: 0, y: 0 }
       let over: string | null = null
+      // The current Hover target and its dwell clock (ADR-0024). `dwellAnchor`
+      // is the settle point the timer is measured from; movement past the
+      // target's `tolerance` re-anchors and reschedules it.
+      let hover: string | null = null
+      let dwellTimer: ReturnType<typeof setTimeout> | null = null
+      let dwellAnchorX = activateX
+      let dwellAnchorY = activateY
       let frame: number | null = null
       let remeasureFrame: number | null = null
 
@@ -337,6 +376,74 @@ export function createEngine<Data, Accept, Reject>({
         }
       }
 
+      // The Hover target under the cursor (ADR-0024): a pointer-only hit-test
+      // over the Hover-target rects, independent of the Overlay and of the Drop
+      // Action's pluggable collision. It reuses `pointerWithin` (the cursor
+      // inside a target, closest-center on overlap) with a throwaway rect, NOT
+      // the configured detector — `closestCenter` would never return null and a
+      // dwell would fire on the nearest target forever.
+      const hoverAt = (px: number, py: number): string | null =>
+        pointerWithin({
+          pointer: { x: px, y: py },
+          overlayRect: ZERO_RECT,
+          zones: hoverRects,
+        })
+
+      const dwellOf = (targetId: string | null) =>
+        targetId === null ? undefined : hovers.get(targetId)?.dwellRef.current
+
+      const clearDwell = () => {
+        if (dwellTimer !== null) {
+          clearTimeout(dwellTimer)
+          dwellTimer = null
+        }
+      }
+
+      // (Re)anchor the dwell clock at the live pointer for `targetId` (ADR-0024):
+      // clear any pending timer and, if the target carries a dwell config,
+      // schedule `onDwell` for `dwellMs` later. Re-anchoring on each call is
+      // what keeps a moving cursor from ever firing — only a settled one lets
+      // the timer run out. A `setTimeout` (not the rAF loop, which is
+      // movement-driven and stops when the pointer stops) is what fires the
+      // dwell of a still cursor.
+      const armDwell = (targetId: string | null) => {
+        clearDwell()
+        const cfg = dwellOf(targetId)
+        if (!cfg) return
+        dwellAnchorX = latestX
+        dwellAnchorY = latestY
+        dwellTimer = setTimeout(() => {
+          dwellTimer = null
+          // Read the handler at fire time (so a changed `onDwell` is honoured)
+          // and fire only if the cursor is still over the same target.
+          const live = dwellOf(targetId)
+          if (live && hover === targetId)
+            live.onDwell({ id, data: item.dataRef.current })
+        }, cfg.dwellMs)
+      }
+
+      // Recompute the Hover target and run the dwell clock (ADR-0024). Publishes
+      // a Hover transition to the store ONLY when it changes (ADR-0018), like
+      // syncOver; on an unchanged target it re-anchors the clock once the cursor
+      // has drifted past the settle tolerance, so sweeping inside a target never
+      // fires while settling does.
+      const syncHover = () => {
+        const next = hoverAt(latestX, latestY)
+        if (next !== hover) {
+          hover = next
+          commit({ hover })
+          armDwell(next)
+          return
+        }
+        const cfg = dwellOf(hover)
+        if (
+          cfg &&
+          Math.hypot(latestX - dwellAnchorX, latestY - dwellAnchorY) >
+            cfg.tolerance
+        )
+          armDwell(hover)
+      }
+
       const draggingActive = (): ActiveSnapshot<Data> => ({
         id,
         data: item.dataRef.current,
@@ -384,6 +491,7 @@ export function createEngine<Data, Accept, Reject>({
         commit({
           active: null,
           over: null,
+          hover: null,
           resolution: {
             outcome,
             homeRect,
@@ -404,6 +512,7 @@ export function createEngine<Data, Accept, Reject>({
         transform = resolveTransform(latestX, latestY)
         if (overlay.node) placeOverlay(overlay.node)
         syncOver()
+        syncHover()
       }
 
       const onMove = (e: PointerEvent) => {
@@ -423,7 +532,9 @@ export function createEngine<Data, Accept, Reject>({
       // nested scroll containers.
       const remeasure = () => {
         zoneRects = measureZones()
+        hoverRects = measureHovers()
         syncOver()
+        syncHover()
       }
       const onScrollResize = () => {
         if (remeasureFrame === null) {
@@ -445,6 +556,9 @@ export function createEngine<Data, Accept, Reject>({
         window.removeEventListener('resize', onScrollResize)
         if (frame !== null) cancelAnimationFrame(frame)
         if (remeasureFrame !== null) cancelAnimationFrame(remeasureFrame)
+        // A pending dwell never outlives the drag (ADR-0024): cleanup runs on
+        // every exit path, so `onDwell` cannot fire after release/cancel.
+        clearDwell()
         // The grabbing cursor ends at release (ADR-0019): the pointer is up, so
         // it must clear even though an async Dropping phase may still be in
         // flight. cleanup runs on every exit path, exactly once per drag.
@@ -484,6 +598,9 @@ export function createEngine<Data, Accept, Reject>({
             originRect,
           },
           over: overId,
+          // The pointer is up, so nothing is Hovered through the Dropping phase
+          // (the dwell timer is already cleared by cleanup, ADR-0024).
+          hover: null,
         })
 
         // 1 Zone = 1 onDrop (ADR-0014): a single handler decides; the Item
@@ -536,8 +653,11 @@ export function createEngine<Data, Accept, Reject>({
       // Overlay does not jump on activation.
       transform = resolveTransform(activateX, activateY)
       over = overAt(activateX, activateY)
-      commit({ active: draggingActive(), over, resolution: null })
+      hover = hoverAt(activateX, activateY)
+      commit({ active: draggingActive(), over, hover, resolution: null })
       if (overlay.node) placeOverlay(overlay.node)
+      // A drag that begins already over a Hover target arms the dwell at once.
+      armDwell(hover)
       // Show grabbing only once the press has truly become a drag (not on a
       // click/tap that never activated) — ADR-0019.
       if (grabCursor) showGrabbingCursor()

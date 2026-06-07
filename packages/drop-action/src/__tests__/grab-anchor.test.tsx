@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { center, createDropAction } from '../main'
 import type { GrabAnchorArgs, Measure, Rect } from '../main'
-import { createSnapBack } from '../snap-back'
+import { snapBack } from '../snap-back'
 
 type Data = { label: string }
 
@@ -145,11 +145,7 @@ describe('grab anchor — where the Overlay hangs from the pointer (ADR-0021)', 
 describe('Return homes the Overlay centered on the source (ADR-0022)', () => {
   test('a No-drop returns the chip centered on the source, not to its corner', async () => {
     const DA = createDropAction<Data>({ measure })
-    const { SnapBack } = createSnapBack<Data>({
-      useActive: DA.useActive,
-      useResolution: DA.useResolution,
-      useOverlay: DA.useOverlay,
-    })
+    const { SnapBack } = snapBack<Data>()(DA)
 
     render(
       <>

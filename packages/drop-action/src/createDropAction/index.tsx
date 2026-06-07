@@ -16,8 +16,11 @@ import { restrictToWindowEdges } from './modifiers'
 import { createStore } from './store'
 import type {
   ActiveSnapshot,
+  DwellConfig,
+  HoverRegistration,
   ItemRegistration,
   OverlayRegistry,
+  Ref,
   Resolution,
   ZoneRegistration,
 } from './types.private'
@@ -25,9 +28,11 @@ import type {
   CreateDropActionOptions,
   DraggedItem,
   DragHandleProps,
+  Extension,
   GrabAnchor,
   ItemHandleProps,
   OverlayProps,
+  UseDwellOptions,
   UseItemOptions,
   ZoneDropHandler,
 } from './types.public'
@@ -88,6 +93,21 @@ type ActiveProps<Data> = {
   container?: Element | DocumentFragment
 }
 
+// Merge an Extension tuple's member types into the channel (ADR-0025): each
+// Extension returns a members object, and the channel's static type gains their
+// intersection. An empty tuple adds `object` (the identity for `&`), so a
+// no-extension `createDropAction(options)` keeps exactly the core member type.
+type UnionToIntersection<U> = (
+  U extends unknown
+    ? (k: U) => void
+    : never
+) extends (k: infer I) => void
+  ? I
+  : never
+type MergedMembers<Exts extends readonly Extension[]> = Exts extends readonly []
+  ? object
+  : UnionToIntersection<ReturnType<Exts[number]>>
+
 // The factory: returns the Drop Action as a channel component carrying the
 // peer components (`Zone`, `Item`, `Active`) + hooks as members (ADR-0015).
 // The store is closure-scoped, so only this Drop Action's Items and Zones
@@ -123,6 +143,9 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   // Zone carries its single onDrop with its node (ADR-0014).
   const items = new Map<string, ItemRegistration<Data, Accept, Reject>>()
   const zones = new Map<string, ZoneRegistration<Data, Accept, Reject>>()
+  // Hover targets live in their own registry (ADR-0024): observe-only, so they
+  // never enter Drop resolution and may share ids with Items/Zones.
+  const hovers = new Map<string, HoverRegistration<Data>>()
 
   // The shared handle on the rendered Overlay node (ADR-0017, ADR-0018): the
   // `useOverlay` ref sets `node`; the engine sets `place` while a drag is live.
@@ -131,6 +154,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   const engine = createEngine<Data, Accept, Reject>({
     items,
     zones,
+    hovers,
     measure,
     modifiers,
     collisionDetection,
@@ -312,6 +336,63 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     return { ref }
   }
 
+  // Register a Hover target (ADR-0024): an observe-only element the engine
+  // pointer-tests each frame, never a drop target. The boolean tracks whether
+  // the drag's cursor is currently inside it — read off the store like
+  // `isActiveId`, so a Hover target re-renders only when its membership flips
+  // (ADR-0018). `useDwell` is built on this; the optional `dwellRef` carries
+  // its settle config and is `undefined` for a pure `useHover`.
+  function useHoverState(
+    id: string,
+    dwellRef: Ref<DwellConfig<Data> | undefined>,
+  ) {
+    const ref = useCallback(
+      (node: HTMLElement | null) => {
+        if (node) hovers.set(id, { node, dwellRef })
+        else hovers.delete(id)
+      },
+      // `dwellRef` is a stable useRef from the caller; listed to satisfy the
+      // exhaustive-deps lint without ever re-registering the node.
+      [id, dwellRef],
+    )
+
+    const getSnapshot = useCallback(() => store.isHoverId(id), [id])
+    const isHovering = useSyncExternalStore(
+      store.subscribe,
+      getSnapshot,
+      store.getServerIsHoverId,
+    )
+
+    return { ref, isHovering }
+  }
+
+  // Observe-only over-detection for an arbitrary element (ADR-0024): `isHovering`
+  // is true while the drag's cursor is inside it, even though `setPointerCapture`
+  // has killed DOM hover. A Drop never lands here. The generic seam dwell and
+  // userland behaviours (auto-scroll, tab-switch) build on.
+  function useHover(id: string) {
+    const dwellRef = useRef<DwellConfig<Data> | undefined>(undefined)
+    return useHoverState(id, dwellRef)
+  }
+
+  // Spring-load timing over a Hover target (ADR-0024): `onDwell` fires once the
+  // cursor settles within `tolerance` px for `dwellMs` ms, re-arming only after
+  // the drag leaves or moves off the settle point. The engine owns the timer
+  // (it needs the per-frame pointer the store withholds, ADR-0018); `isDwelling`
+  // is the same immediate cursor-inside signal as `useHover`'s `isHovering`.
+  function useDwell(id: string, options: UseDwellOptions<Data>) {
+    const dwellRef = useRef<DwellConfig<Data> | undefined>(undefined)
+    // Defaults resolved here so the engine reads concrete values; refreshed each
+    // render so a changed `onDwell` is honoured without re-registering the node.
+    dwellRef.current = {
+      onDwell: options.onDwell,
+      dwellMs: options.dwellMs ?? 500,
+      tolerance: options.tolerance ?? 8,
+    }
+    const { ref, isHovering } = useHoverState(id, dwellRef)
+    return { ref, isDwelling: isHovering }
+  }
+
   // ----- Components (thin sugar over the hooks — ADR-0008) --------------
   // `as` picks the wrapper element/component (default 'div'). For a
   // zero-extra-node layout, use the hook directly instead (ADR-0008).
@@ -398,7 +479,7 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     return null
   }
 
-  return Object.assign(DropAction, {
+  const baseMembers = {
     Item,
     Zone,
     Active,
@@ -409,5 +490,45 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     useResolution,
     useOver,
     useOverlay,
-  })
+    useHover,
+    useDwell,
+  }
+  type Channel = typeof DropAction & typeof baseMembers
+
+  // Apply Extensions (ADR-0025): `.extend(...)` takes one or more Extensions,
+  // calls each with the channel, and merges the returned members under it, so
+  // they read as `DA.SnapBack`, `DA.useSnapBack`, … An Extension reads only
+  // public members, so the core carries just this tiny merge — each Extension's
+  // code arrives via its own subpath import, keeping it tree-shakeable
+  // (ADR-0004). It is a method, not a second `createDropAction` argument,
+  // because TypeScript stops inferring trailing type parameters once `Data` is
+  // given explicitly — a separate call site lets the Extension tuple infer so
+  // the merged members stay typed. A returned name colliding with an existing
+  // member is a mistake (Extensions are additive, not overrides), so warn in dev.
+  function extend<const Exts extends readonly Extension[]>(
+    ...exts: Exts
+  ): Channel & MergedMembers<Exts> {
+    for (const ext of exts) {
+      const members = ext(channel)
+      if (process.env.NODE_ENV !== 'production') {
+        for (const key of Object.keys(members))
+          if (key in channel)
+            console.warn(
+              `createDropAction: extension overrides existing member "${key}".`,
+            )
+      }
+      Object.assign(channel, members)
+    }
+    // The runtime merge added the Extension members; the generic
+    // `MergedMembers<Exts>` cannot be related to the concrete channel type, so
+    // assert through `unknown`.
+    return channel as unknown as Channel & MergedMembers<Exts>
+  }
+
+  const channel: Channel & { extend: typeof extend } = Object.assign(
+    DropAction,
+    { ...baseMembers, extend },
+  )
+
+  return channel
 }
