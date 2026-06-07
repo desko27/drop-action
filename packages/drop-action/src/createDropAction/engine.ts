@@ -177,6 +177,13 @@ export function createEngine<Data, Accept, Reject>({
       // 'proportional'. The Overlay is position:fixed and tracks the pointer
       // regardless of scroll, hanging from the anchor (see resolveAnchoredOrigin).
       const originRect = measure({ node: item.node, id, type: 'item' })
+      // The Active's data, snapshotted at drag-start and stable for the whole
+      // flight (ADR-0027): every reader — reactive (`useActive` / `useOver`) and
+      // imperative (`onDrop` / `onAccept` / `onReject` / `onDwell`) — sees this
+      // one frozen value, so the model never disagrees with itself. A `data` that
+      // mutates mid-drag is deliberately not reflected (no demonstrated need;
+      // supporting it is additive — re-commit `active` on change, ADR-0027).
+      const data = item.dataRef.current
       const anchor: GrabAnchor =
         item.grabAnchorRef.current ?? grabAnchor ?? 'proportional'
 
@@ -422,8 +429,7 @@ export function createEngine<Data, Accept, Reject>({
           // Read the handler at fire time (so a changed `onDwell` is honoured)
           // and fire only if the cursor is still over the same target.
           const live = dwellOf(targetId)
-          if (live && hover === targetId)
-            live.onDwell({ id, data: item.dataRef.current })
+          if (live && hover === targetId) live.onDwell({ id, data })
         }, cfg.dwellMs)
       }
 
@@ -451,7 +457,7 @@ export function createEngine<Data, Accept, Reject>({
 
       const draggingActive = (): ActiveSnapshot<Data> => ({
         id,
-        data: item.dataRef.current,
+        data,
         status: 'dragging',
         originRect,
       })
@@ -501,7 +507,7 @@ export function createEngine<Data, Accept, Reject>({
             outcome,
             homeRect,
             transform: rebased,
-            item: { id, data: item.dataRef.current },
+            item: { id, data },
           },
         })
         overlay.place = null
@@ -655,7 +661,7 @@ export function createEngine<Data, Accept, Reject>({
         transform = resolveTransform(e.clientX, e.clientY)
         if (overlay.node) placeOverlay(overlay.node)
         const overId = overAt(e.clientX, e.clientY)
-        const dragged: DraggedItem<Data> = { id, data: item.dataRef.current }
+        const dragged: DraggedItem<Data> = { id, data }
 
         // Released over nothing — a No-drop (CONTEXT.md): no Zone, so no Drop
         // and no Dropping phase. It is a Return, not a Reject.
@@ -671,7 +677,7 @@ export function createEngine<Data, Accept, Reject>({
         commit({
           active: {
             id,
-            data: item.dataRef.current,
+            data,
             status: 'dropping',
             originRect,
           },

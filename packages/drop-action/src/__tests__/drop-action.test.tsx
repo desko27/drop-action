@@ -95,6 +95,33 @@ describe('createDropAction — public API behaviour', () => {
     expect(dragged).toEqual({ id: 'card', data: { label: 'Card' } })
   })
 
+  test('onDrop gets the drag-start data, not data mutated mid-drag (ADR-0027)', () => {
+    const DA = createDropAction<Data>({ measure })
+    const onDrop = vi.fn()
+    const view = (label: string) => (
+      <>
+        <DA.Item id="card" data={{ label }}>
+          card
+        </DA.Item>
+        <DA.Zone id="slot" onDrop={onDrop}>
+          slot
+        </DA.Zone>
+      </>
+    )
+    const { rerender } = render(view('before'))
+
+    press(screen.getByRole('button'), ITEM_CENTER)
+    // Activate the drag — the snapshot is frozen now (ADR-0027) — then mutate
+    // the Item's data before the Drop lands.
+    move({ x: 120, y: 50 })
+    rerender(view('after'))
+    move(ZONE_CENTER)
+    release(ZONE_CENTER)
+
+    const [dragged] = onDrop.mock.calls[0] as [DraggedItem<Data>]
+    expect(dragged.data).toEqual({ label: 'before' })
+  })
+
   test("accept() runs the Item's onAccept; not responding does not", () => {
     const DA = createDropAction<Data>({ measure })
     const onAccept = vi.fn()
