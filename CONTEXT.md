@@ -235,6 +235,17 @@ band.
 _Avoid_: Edge scroll, scroll region, drag-scroll, Dwell (that is the timed,
 settle-driven sibling — Auto-scroll is the continuous, proximity-driven one).
 
+**Scrollport**:
+A scrollable container **Auto-scroll** can drive: an `overflow: scroll/auto`
+ancestor the pointer is currently inside, plus the window (the document's
+scrolling element) as the outermost, always-present one. Discovered
+automatically — the same clipping ancestors a Zone's **Clipped rect** is built
+from (those that can actually scroll, not `hidden`/`clip`) — never registered by
+the consumer. When the pointer sits inside several nested ones, the innermost
+scrolls first.
+_Avoid_: Scroll container (bare), scroller, viewport, clipping ancestor (that is
+the geometry term — a Scrollport is the subset Auto-scroll can move).
+
 **Sortable**:
 Reorderable-list behaviour — the auto-opening gap/placeholder showing
 where a dragged Item will land within an ordered list. Anticipated as an
