@@ -226,9 +226,10 @@ timing), auto-scroll (that is the separate edge-proximity behaviour, CONTEXT.md
 — Auto-scroll).
 
 **Auto-scroll**:
-Continuous scrolling of a **Scrollport** whenever the drag sits within a band
+Continuous scrolling of a **Scrollport** whenever the pointer sits within a band
 near one of its edges, at a speed that grows the deeper into the band it
-reaches — the dnd-kit-style "drag to the edge and the list follows".
+reaches — the dnd-kit-style "drag to the edge and the list follows". Proximity
+is measured from the pointer (like **Hover**), not the Overlay rect.
 Edge-proximity-driven and untimed, the opposite of **Dwell** (settle-driven):
 no cursor stillness is required, and it stops the instant the drag leaves the
 band. Ships as the opt-in subpath module `drop-action/auto-scroll` (like
