@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/assets/hero.png" alt="drop-action — &lt;Action.Item /&gt;, &lt;Action.Active /&gt; and &lt;Action.Zone /&gt;" width="100%" />
+</p>
+
 # drop-action
 
 Zero-dependency, headless drag-and-drop primitives for React.
