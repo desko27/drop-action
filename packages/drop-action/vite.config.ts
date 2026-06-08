@@ -15,7 +15,7 @@ import dts from 'vite-plugin-dts'
 // second lib entry with its own export condition and .d.cts, establishing
 // the packaging pattern future modules follow. It is not imported by
 // `main`, so importing `drop-action` pulls none of its code.
-const ENTRY_NAMES = ['main', 'snap-back'] as const
+const ENTRY_NAMES = ['main', 'snap-back', 'auto-scroll'] as const
 
 const copyDtsToCts = {
   name: 'copy-dts-to-cts',
@@ -45,6 +45,7 @@ export default defineConfig({
       entry: {
         main: resolve(import.meta.dirname, 'src/main.ts'),
         'snap-back': resolve(import.meta.dirname, 'src/snap-back.tsx'),
+        'auto-scroll': resolve(import.meta.dirname, 'src/auto-scroll.tsx'),
       },
       formats: ['es', 'cjs'],
       fileName: (format, name) => `${name}.${format === 'cjs' ? 'cjs' : 'js'}`,

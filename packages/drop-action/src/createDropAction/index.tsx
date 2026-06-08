@@ -152,6 +152,24 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   // drag is live (the latter resolves the deferred initial Over, ADR-0032).
   const overlay: OverlayRegistry = { node: null, place: null, syncOver: null }
 
+  // The drag-time hook slot (ADR-0033): a registry of React hooks an Extension
+  // registers at setup, which `useOverlay` runs each render while a drag is live.
+  // It lets a behaviour Extension (Auto-scroll) run with zero consumer mounting
+  // and inject no public members — `.extend(autoScroll())` is its whole surface.
+  // The slot MUST be frozen after setup: `.extend(...)` runs synchronously at
+  // construction, before any render, so the call count and order stay stable and
+  // the Rules of Hooks hold. A registration after the first render would break
+  // them, so dev-warn once a render has read the slot.
+  const overlayHooks: Array<() => void> = []
+  let overlayHooksFrozen = false
+  const registerOverlayHook = (useDragTimeHook: () => void) => {
+    if (process.env.NODE_ENV !== 'production' && overlayHooksFrozen)
+      console.warn(
+        'createDropAction: drag-time hooks must be registered at setup (before the first render). Late registration breaks the Rules of Hooks.',
+      )
+    overlayHooks.push(useDragTimeHook)
+  }
+
   const engine = createEngine<Data, Accept, Reject>({
     items,
     zones,
@@ -221,6 +239,11 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
   // imperatively each frame. `<Active>` / `<ActiveSnapBack>` are sugar over this; a
   // headless consumer can render their own Overlay element with it.
   function useOverlay(): OverlayProps {
+    // Run every Extension-registered drag-time hook (ADR-0033). The slot is
+    // frozen after setup, so this calls the same hooks in the same order on every
+    // render — the Rules of Hooks hold even though the calls sit in a loop.
+    overlayHooksFrozen = true
+    for (let i = 0; i < overlayHooks.length; i++) overlayHooks[i]()
     const ref = useCallback((node: HTMLElement | null) => {
       overlay.node = node
       // Position a node that mounts after the drag has already started, then run
@@ -536,10 +559,15 @@ export function createDropAction<Data = unknown, Accept = void, Reject = void>(
     return channel as unknown as Channel & MergedMembers<Exts>
   }
 
-  const channel: Channel & { extend: typeof extend } = Object.assign(
-    DropAction,
-    { ...baseMembers, extend },
-  )
+  // `registerOverlayHook` is the drag-time hook seam (ADR-0033): present on the
+  // channel an Extension receives, but deliberately NOT surfaced on the post-
+  // `.extend()` type — registration belongs at setup, never after, so the
+  // returned channel hides it. Extensions reach it through their own cast (the
+  // channel is typed `unknown`, ADR-0025), the same way snap-back reads its hooks.
+  const channel: Channel & {
+    extend: typeof extend
+    registerOverlayHook: typeof registerOverlayHook
+  } = Object.assign(DropAction, { ...baseMembers, extend, registerOverlayHook })
 
   return channel
 }

@@ -49,4 +49,29 @@ describe('bundle content', () => {
     expect(code).not.toContain('snapBack')
     expect(code).not.toContain('SnapBack')
   })
+
+  // The auto-scroll subpath module (drop-action/auto-scroll, ADR-0033) ships its
+  // own ESM/CJS + types pair under the same packaging pattern.
+  it('auto-scroll bundle exposes autoScroll', async () => {
+    const code = await readFile(resolve(DIST, 'auto-scroll.js'), 'utf-8')
+    expect(code).toContain('autoScroll')
+  })
+
+  it.each([
+    'auto-scroll.js',
+    'auto-scroll.cjs',
+    'auto-scroll.d.ts',
+    'auto-scroll.d.cts',
+  ])('ships dist/%s', async (filename) => {
+    await expect(
+      readFile(resolve(DIST, filename), 'utf-8'),
+    ).resolves.toBeTruthy()
+  })
+
+  // Tree-shakeable: the core entry must not pull any auto-scroll code, so a
+  // consumer who never imports drop-action/auto-scroll ships none of it.
+  it('main bundle pulls no auto-scroll code', async () => {
+    const code = await readFile(resolve(DIST, 'main.js'), 'utf-8')
+    expect(code).not.toContain('autoScroll')
+  })
 })
