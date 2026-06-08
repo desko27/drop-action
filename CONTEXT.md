@@ -231,7 +231,9 @@ near one of its edges, at a speed that grows the deeper into the band it
 reaches — the dnd-kit-style "drag to the edge and the list follows".
 Edge-proximity-driven and untimed, the opposite of **Dwell** (settle-driven):
 no cursor stillness is required, and it stops the instant the drag leaves the
-band.
+band. Ships as the opt-in subpath module `drop-action/auto-scroll` (like
+Snap-back), built only on the public store — never part of the headless core,
+which carries no scroll machinery.
 _Avoid_: Edge scroll, scroll region, drag-scroll, Dwell (that is the timed,
 settle-driven sibling — Auto-scroll is the continuous, proximity-driven one).
 
