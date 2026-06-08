@@ -216,11 +216,24 @@ The engine owns the timer (not the store, not the app): detecting "moved too
 much inside the area" needs the per-frame pointer the store deliberately
 withholds (ADR-0018), so Dwell is core alongside Hover — a sibling of the
 Activation constraint's delay+tolerance gesture. The spring-loaded folder
-(hover-to-expand on drag-over) is one use; auto-scroll regions and tab-switch
-are others.
+(hover-to-expand on drag-over) is one use; tab-switch is another. Distinct from
+**Auto-scroll**: Dwell is *settle*-driven (a still cursor for `dwellMs`),
+Auto-scroll is *edge-proximity*-driven (continuous while the pointer sits near a
+scrollport edge) — neither depends on the other.
 _Avoid_: Hover (that is the immediate, untimed relationship — Dwell is the
 *settled* one), spring-load (one use of it), long-press (that is pointer-down
-timing).
+timing), auto-scroll (that is the separate edge-proximity behaviour, CONTEXT.md
+— Auto-scroll).
+
+**Auto-scroll**:
+Continuous scrolling of a **Scrollport** whenever the drag sits within a band
+near one of its edges, at a speed that grows the deeper into the band it
+reaches — the dnd-kit-style "drag to the edge and the list follows".
+Edge-proximity-driven and untimed, the opposite of **Dwell** (settle-driven):
+no cursor stillness is required, and it stops the instant the drag leaves the
+band.
+_Avoid_: Edge scroll, scroll region, drag-scroll, Dwell (that is the timed,
+settle-driven sibling — Auto-scroll is the continuous, proximity-driven one).
 
 **Sortable**:
 Reorderable-list behaviour — the auto-opening gap/placeholder showing
