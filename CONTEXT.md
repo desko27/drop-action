@@ -187,13 +187,19 @@ _Avoid_: Constraint (that is the Activation constraint), transformer.
 ### Optional modules
 
 **Extension**:
-A first-party add-on injected into a Drop Action's namespace through
-`createDropAction(options).extend(ext(), …)`, built only on the channel's public
-members. Shipped as a tree-shakeable subpath module (ADR-0004), so a consumer
+A first-party add-on attached to a Drop Action through
+`createDropAction(options).extend(ext(), …)`. An Extension may **inject members**
+into the namespace (Snap-back adds `ActiveSnapBack`) and/or **register a
+drag-time hook** the Overlay runs each render while a drag is live (Auto-scroll
+registers one and adds no members, so `.extend(autoScroll())` alone is its whole
+surface). Shipped as a tree-shakeable subpath module (ADR-0004), so a consumer
 who never imports it bundles none of it; the core carries only a tiny generic
-merge. Snap-back is an Extension; Dwell, by contrast, is **core** — its timer
-needs the engine's per-frame pointer (ADR-0018), which an Extension cannot see —
-a loop-bound behaviour stays in core (ADR-0028).
+merge plus the drag-time hook slot. Snap-back is an Extension; Dwell, by
+contrast, is **core** — its timer needs the engine's per-frame pointer
+(ADR-0018), which an Extension cannot see — a loop-bound behaviour whose
+*measurement* stays in core (ADR-0028). Auto-scroll is loop-bound only on the
+*pointer* (it adds its own `pointermove` and needs none of the core's
+re-measure), so it ships as an Extension after all.
 _Avoid_: Plugin, middleware, mixin, addon.
 
 **Snap-back**:
@@ -216,11 +222,40 @@ The engine owns the timer (not the store, not the app): detecting "moved too
 much inside the area" needs the per-frame pointer the store deliberately
 withholds (ADR-0018), so Dwell is core alongside Hover — a sibling of the
 Activation constraint's delay+tolerance gesture. The spring-loaded folder
-(hover-to-expand on drag-over) is one use; auto-scroll regions and tab-switch
-are others.
+(hover-to-expand on drag-over) is one use; tab-switch is another. Distinct from
+**Auto-scroll**: Dwell is *settle*-driven (a still cursor for `dwellMs`),
+Auto-scroll is *edge-proximity*-driven (continuous while the pointer sits near a
+scrollport edge) — neither depends on the other.
 _Avoid_: Hover (that is the immediate, untimed relationship — Dwell is the
 *settled* one), spring-load (one use of it), long-press (that is pointer-down
-timing).
+timing), auto-scroll (that is the separate edge-proximity behaviour, CONTEXT.md
+— Auto-scroll).
+
+**Auto-scroll**:
+Continuous scrolling of a **Scrollport** whenever the pointer sits within a band
+near one of its edges, at a speed that grows the deeper into the band it
+reaches — the dnd-kit-style "drag to the edge and the list follows". Proximity
+is measured from the pointer (like **Hover**), not the Overlay rect.
+Edge-proximity-driven and untimed, the opposite of **Dwell** (settle-driven):
+no cursor stillness is required, and it stops the instant the drag leaves the
+band. Ships as the opt-in subpath module `drop-action/auto-scroll`; enabling it
+is `.extend(autoScroll())` **alone** — it injects no namespace members and the
+consumer mounts nothing, running its loop from the Overlay's render through the
+channel's drag-time hook slot. The scroll machinery stays out of the headless
+core, which carries no scroll logic — only the tiny generic slot.
+_Avoid_: Edge scroll, scroll region, drag-scroll, Dwell (that is the timed,
+settle-driven sibling — Auto-scroll is the continuous, proximity-driven one).
+
+**Scrollport**:
+A scrollable container **Auto-scroll** can drive: an `overflow: scroll/auto`
+ancestor the pointer is currently inside, plus the window (the document's
+scrolling element) as the outermost, always-present one. Discovered
+automatically — the same clipping ancestors a Zone's **Clipped rect** is built
+from (those that can actually scroll, not `hidden`/`clip`) — never registered by
+the consumer. When the pointer sits inside several nested ones, the innermost
+scrolls first.
+_Avoid_: Scroll container (bare), scroller, viewport, clipping ancestor (that is
+the geometry term — a Scrollport is the subset Auto-scroll can move).
 
 **Sortable**:
 Reorderable-list behaviour — the auto-opening gap/placeholder showing

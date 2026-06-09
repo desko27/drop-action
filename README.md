@@ -33,8 +33,8 @@ Headless means it ships behaviour, not looks: it tracks the drag, decides which 
 - **Smart grab anchor** — the overlay hangs from the pointer where you grabbed it; the `proportional` default keeps the same fractional grip even when the overlay is a different size from the source, so the pointer never "grabs the void" (configurable per action or per item; [ADR-0021](docs/adr/0021-grab-anchor-engine-config-proportional-default.md)).
 - **TypeScript-first** — generic over your item `data`; the dragged `{ id, data }` is typed end to end.
 - **SSR-safe** — inert on the server, no DOM access until a drag begins.
-- **Spring-loading** — `useHover` / `useDwell` detect the drag dwelling over any element (hover-to-expand folders, auto-scroll regions), even though pointer capture kills DOM hover mid-drag ([ADR-0024](docs/adr/0024-hover-targets-and-core-dwell.md)).
-- **Opt-in extras as Extensions** — snap-back ships as a tree-shakeable `drop-action/snap-back` module you inject under the namespace with `.extend()` ([ADR-0004](docs/adr/0004-headless-core-optional-subpath-modules.md), [ADR-0025](docs/adr/0025-extensions-namespace-injection.md)).
+- **Spring-loading** — `useHover` / `useDwell` detect the drag dwelling over any element (hover-to-expand folders), even though pointer capture kills DOM hover mid-drag ([ADR-0024](docs/adr/0024-hover-targets-and-core-dwell.md)).
+- **Opt-in extras as Extensions** — snap-back (`drop-action/snap-back`) and edge auto-scroll (`drop-action/auto-scroll`) ship as tree-shakeable modules you inject under the namespace with `.extend()` ([ADR-0004](docs/adr/0004-headless-core-optional-subpath-modules.md), [ADR-0025](docs/adr/0025-extensions-namespace-injection.md), [ADR-0033](docs/adr/0033-auto-scroll-extension-via-drag-time-hook-seam.md)).
 
 ## Installation
 
@@ -143,6 +143,21 @@ const DnD = createDropAction<Card>().extend(snapBack<Card>())
 
 `.extend(...)` takes one or more Extensions and merges their members under the channel; it is a method (not a second `createDropAction` argument) so the Extension types stay inferred even when you fix `Data` explicitly. To apply one by hand instead, call it: `const { ActiveSnapBack } = snapBack<Card>()(DnD)`.
 
+### Auto-scroll (opt-in Extension)
+
+`drop-action/auto-scroll` is dnd-kit-style edge-proximity scrolling: while a drag's pointer sits in a band near a scroll container's edge, that container scrolls continuously, faster the deeper into the band — innermost scroller first, the window as the outermost, falling through to the next outer one when the inner hits its limit. Enabling it is `.extend(autoScroll())` and **nothing else** — it injects no namespace members and you mount nothing:
+
+```tsx
+import { createDropAction } from 'drop-action'
+import { autoScroll } from 'drop-action/auto-scroll'
+
+const DnD = createDropAction<Card>().extend(autoScroll<Card>())
+
+// Render <DnD.Active> as usual — auto-scroll just runs during drags.
+```
+
+Tune it per Drop Action: `threshold` (band size as a fraction of the scroller per axis, default `0.2`), `speed` (max px/s, default `1500`), `acceleration` (depth→speed exponent, default `1` = linear). To disable it, drop the extension. Scroll containers are discovered automatically (any `overflow: scroll/auto` ancestor the pointer is inside, plus the window), so there is nothing to register ([ADR-0033](docs/adr/0033-auto-scroll-extension-via-drag-time-hook-seam.md)).
+
 ### Spring-loading (hover & dwell)
 
 During a drag, `setPointerCapture` makes the source own the pointer, so other elements never get DOM `hover`. The engine is then the only reliable source of "the cursor is over element X" — so hover/dwell live in the core. `useHover(id)` reports it; `useDwell(id, { onDwell })` fires once the cursor **settles** over the element for `dwellMs` (staying within `tolerance` px) — the building block for spring-loaded folders that expand on drag-over:
@@ -159,7 +174,7 @@ function NodeHeader({ id }: { id: string }) {
 }
 ```
 
-A hover target is **observe-only** — a drop never lands on it and it never affects drop resolution, so it can freely overlap a zone. Reach for `useHover` when you want the raw "is the drag over me" signal (auto-scroll regions, tab-switch) and `useDwell` when you want it timed.
+A hover target is **observe-only** — a drop never lands on it and it never affects drop resolution, so it can freely overlap a zone. Reach for `useHover` when you want the raw "is the drag over me" signal (tab-switch on drag-over, custom highlights) and `useDwell` when you want it timed. (Edge auto-scroll is its own thing — see the `drop-action/auto-scroll` Extension above — not a hover/dwell use.)
 
 ### Grab anchor
 

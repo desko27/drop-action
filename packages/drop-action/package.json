@@ -37,6 +37,16 @@
         "default": "./dist/snap-back.cjs"
       }
     },
+    "./auto-scroll": {
+      "import": {
+        "types": "./dist/auto-scroll.d.ts",
+        "default": "./dist/auto-scroll.js"
+      },
+      "require": {
+        "types": "./dist/auto-scroll.d.cts",
+        "default": "./dist/auto-scroll.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -59,6 +69,14 @@
     },
     {
       "path": "dist/snap-back.cjs",
+      "limit": "1.5 KB"
+    },
+    {
+      "path": "dist/auto-scroll.js",
+      "limit": "1.5 KB"
+    },
+    {
+      "path": "dist/auto-scroll.cjs",
       "limit": "1.5 KB"
     }
   ],
